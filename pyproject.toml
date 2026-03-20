@@ -1,0 +1,22 @@
+[project]
+name = "ai-health-coach"
+version = "0.1.0"
+description = "AI-powered accountability partner for home exercise program adherence"
+requires-python = ">=3.9"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langgraph-checkpoint-sqlite>=2.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+health-coach = "ai_health_coach.cli.main:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ai_health_coach*"]
