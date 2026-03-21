@@ -68,6 +68,7 @@ class PatientResponse(BaseModel):
     consecutive_unanswered_count: int
     completed_checkins: list[str]
     assigned_exercises: list[dict]
+    exercise_log: list[dict]
 
 
 class ChatResponse(BaseModel):
@@ -99,6 +100,7 @@ def get_patient(patient_id: str):
         consecutive_unanswered_count=state["consecutive_unanswered_count"],
         completed_checkins=state["completed_checkins"],
         assigned_exercises=state["assigned_exercises"],
+        exercise_log=state.get("exercise_log", []),
     )
 
 

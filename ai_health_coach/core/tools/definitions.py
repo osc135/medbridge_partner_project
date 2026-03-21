@@ -23,7 +23,20 @@ def set_reminder(patient_id: str, scheduled_for: str, interaction_type: str) -> 
     """Schedule a follow-up reminder for the patient.
 
     interaction_type: 'day_2_checkin' | 'day_5_checkin' | 'day_7_checkin'
+    Writes the reminder to state so it's trackable.
     """
+    from ai_health_coach.core.persistence import load_state, save_state
+
+    state = load_state(patient_id)
+    if state is not None:
+        reminder = {
+            "type": interaction_type,
+            "scheduled_for": scheduled_for,
+            "sent": False,
+        }
+        state = {**state, "reminders": state["reminders"] + [reminder]}
+        save_state(state)
+
     return {
         "success": True,
         "reminder_id": f"reminder_{patient_id}_{interaction_type}",
@@ -54,15 +67,60 @@ def get_program_summary(patient_id: str) -> dict:
 def get_adherence_summary(patient_id: str) -> dict:
     """Fetch the patient's exercise adherence data.
 
-    Returns completion rate and trend for tone determination.
+    Reads from the exercise_log in state. Returns completion rate and trend.
     """
+    from ai_health_coach.core.persistence import load_state
+
+    state = load_state(patient_id)
+    if state is None:
+        return {"success": False, "error": "Patient not found"}
+
+    log = state.get("exercise_log", [])
+
+    if not log:
+        # No data yet — return neutral defaults
+        return {
+            "success": True,
+            "adherence": {
+                "total_days": 0,
+                "completed_days": 0,
+                "completion_rate": 0.0,
+                "trend": "stable",
+            },
+        }
+
+    total = len(log)
+    completed = sum(1 for entry in log if entry.get("completed"))
+    rate = completed / total if total > 0 else 0.0
+
+    # Trend: compare last 3 entries vs previous 3
+    if total >= 6:
+        recent = sum(1 for e in log[-3:] if e.get("completed"))
+        earlier = sum(1 for e in log[-6:-3] if e.get("completed"))
+        if recent > earlier:
+            trend = "improving"
+        elif recent < earlier:
+            trend = "declining"
+        else:
+            trend = "stable"
+    elif total >= 3:
+        recent = sum(1 for e in log[-3:] if e.get("completed"))
+        if recent >= 2:
+            trend = "improving"
+        elif recent == 0:
+            trend = "declining"
+        else:
+            trend = "stable"
+    else:
+        trend = "stable"
+
     return {
         "success": True,
         "adherence": {
-            "total_days": 7,
-            "completed_days": 5,
-            "completion_rate": 0.71,
-            "trend": "improving",
+            "total_days": total,
+            "completed_days": completed,
+            "completion_rate": round(rate, 2),
+            "trend": trend,
         },
     }
 

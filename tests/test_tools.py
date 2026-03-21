@@ -74,12 +74,145 @@ def test_get_program_summary_missing_patient():
     assert result["success"] is False
 
 
-def test_get_adherence_summary_returns_data():
-    result = get_adherence_summary("P001")
-    assert result["success"] is True
-    assert "completion_rate" in result["adherence"]
-    assert "trend" in result["adherence"]
-    assert 0 <= result["adherence"]["completion_rate"] <= 1
+def test_get_adherence_summary_empty_log(tmp_path):
+    """No exercise log → 0% completion, stable trend."""
+    import ai_health_coach.core.persistence as persistence
+    from ai_health_coach.core.state.schemas import create_initial_state
+
+    db_path = str(tmp_path / "adh_empty.db")
+    original = os.environ.get("HEALTH_COACH_DB")
+    os.environ["HEALTH_COACH_DB"] = db_path
+
+    try:
+        state = create_initial_state(
+            patient_id="P_ADH_EMPTY",
+            patient_name="Test",
+            assigned_exercises=[{"name": "Squats", "sets": 2, "reps": 10}],
+            program_start_date="2026-03-20",
+        )
+        persistence.save_state(state)
+
+        result = get_adherence_summary("P_ADH_EMPTY")
+        assert result["success"] is True
+        assert result["adherence"]["total_days"] == 0
+        assert result["adherence"]["completion_rate"] == 0.0
+        assert result["adherence"]["trend"] == "stable"
+    finally:
+        if original:
+            os.environ["HEALTH_COACH_DB"] = original
+        else:
+            os.environ.pop("HEALTH_COACH_DB", None)
+
+
+def test_get_adherence_summary_with_log(tmp_path):
+    """Exercise log with mixed results → correct rate and trend."""
+    import ai_health_coach.core.persistence as persistence
+    from ai_health_coach.core.state.schemas import create_initial_state
+
+    db_path = str(tmp_path / "adh_log.db")
+    original = os.environ.get("HEALTH_COACH_DB")
+    os.environ["HEALTH_COACH_DB"] = db_path
+
+    try:
+        state = create_initial_state(
+            patient_id="P_ADH_LOG",
+            patient_name="Test",
+            assigned_exercises=[{"name": "Squats", "sets": 2, "reps": 10}],
+            program_start_date="2026-03-20",
+        )
+        state["exercise_log"] = [
+            {"date": "2026-03-20", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-21", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-22", "completed": False, "source": "unanswered_day_2"},
+            {"date": "2026-03-23", "completed": True, "source": "patient_response"},
+        ]
+        persistence.save_state(state)
+
+        result = get_adherence_summary("P_ADH_LOG")
+        assert result["success"] is True
+        assert result["adherence"]["total_days"] == 4
+        assert result["adherence"]["completed_days"] == 3
+        assert result["adherence"]["completion_rate"] == 0.75
+    finally:
+        if original:
+            os.environ["HEALTH_COACH_DB"] = original
+        else:
+            os.environ.pop("HEALTH_COACH_DB", None)
+
+
+def test_get_adherence_summary_trend_improving(tmp_path):
+    """Trend should be improving when recent entries are better than earlier ones."""
+    import ai_health_coach.core.persistence as persistence
+    from ai_health_coach.core.state.schemas import create_initial_state
+
+    db_path = str(tmp_path / "adh_trend.db")
+    original = os.environ.get("HEALTH_COACH_DB")
+    os.environ["HEALTH_COACH_DB"] = db_path
+
+    try:
+        state = create_initial_state(
+            patient_id="P_ADH_TREND",
+            patient_name="Test",
+            assigned_exercises=[{"name": "Squats", "sets": 2, "reps": 10}],
+            program_start_date="2026-03-20",
+        )
+        state["exercise_log"] = [
+            {"date": "2026-03-20", "completed": False, "source": "unanswered"},
+            {"date": "2026-03-21", "completed": False, "source": "unanswered"},
+            {"date": "2026-03-22", "completed": False, "source": "unanswered"},
+            {"date": "2026-03-23", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-24", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-25", "completed": True, "source": "patient_response"},
+        ]
+        persistence.save_state(state)
+
+        result = get_adherence_summary("P_ADH_TREND")
+        assert result["adherence"]["trend"] == "improving"
+    finally:
+        if original:
+            os.environ["HEALTH_COACH_DB"] = original
+        else:
+            os.environ.pop("HEALTH_COACH_DB", None)
+
+
+def test_get_adherence_summary_trend_declining(tmp_path):
+    """Trend should be declining when recent entries are worse."""
+    import ai_health_coach.core.persistence as persistence
+    from ai_health_coach.core.state.schemas import create_initial_state
+
+    db_path = str(tmp_path / "adh_decline.db")
+    original = os.environ.get("HEALTH_COACH_DB")
+    os.environ["HEALTH_COACH_DB"] = db_path
+
+    try:
+        state = create_initial_state(
+            patient_id="P_ADH_DEC",
+            patient_name="Test",
+            assigned_exercises=[{"name": "Squats", "sets": 2, "reps": 10}],
+            program_start_date="2026-03-20",
+        )
+        state["exercise_log"] = [
+            {"date": "2026-03-20", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-21", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-22", "completed": True, "source": "patient_response"},
+            {"date": "2026-03-23", "completed": False, "source": "unanswered"},
+            {"date": "2026-03-24", "completed": False, "source": "unanswered"},
+            {"date": "2026-03-25", "completed": False, "source": "unanswered"},
+        ]
+        persistence.save_state(state)
+
+        result = get_adherence_summary("P_ADH_DEC")
+        assert result["adherence"]["trend"] == "declining"
+    finally:
+        if original:
+            os.environ["HEALTH_COACH_DB"] = original
+        else:
+            os.environ.pop("HEALTH_COACH_DB", None)
+
+
+def test_get_adherence_summary_missing_patient():
+    result = get_adherence_summary("NONEXISTENT_XYZ")
+    assert result["success"] is False
 
 
 def test_alert_clinician_returns_success():
