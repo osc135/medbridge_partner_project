@@ -1,20 +1,17 @@
-"""Parent router graph — consent gate + deterministic phase routing.
+"""Parent router — thin wrapper that invokes the LangGraph state graph.
 
-The LLM never decides phase transitions. All routing is pure Python.
+The LLM never decides phase transitions. All routing is deterministic
+and defined via conditional edges in graph_builder.py.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
-from ai_health_coach.core.graph.active import run_active_response, run_checkin
-from ai_health_coach.core.graph.dormant import enter_dormant, handle_dormant_message
-from ai_health_coach.core.graph.onboarding import run_onboarding
-from ai_health_coach.core.graph.re_engaging import run_nudge, run_warm_reengagement
-from ai_health_coach.core.safety.classifier import (
-    CRISIS_MESSAGE,
-    classify_message,
+from ai_health_coach.core.graph.graph_builder import (
+    NEVER_CONSENTED_MESSAGE,
+    REVOKED_MESSAGE,
+    build_graph,
 )
 from ai_health_coach.core.state.schemas import (
     PHASE_ACTIVE,
@@ -24,10 +21,29 @@ from ai_health_coach.core.state.schemas import (
     PHASE_RE_ENGAGING,
     PatientState,
 )
-from ai_health_coach.core.tools.definitions import execute_tool
+
+# Re-export constants so existing imports in tests/cli still work
+__all__ = [
+    "NEVER_CONSENTED_MESSAGE",
+    "REVOKED_MESSAGE",
+    "check_consent",
+    "evaluate_transitions",
+    "route_message",
+]
+
+# ─── Lazy-compiled graph singleton ─────────────────────────────────
+
+_compiled_graph = None
 
 
-# ─── Consent Gate ───────────────────────────────────────────────────
+def _get_graph():
+    global _compiled_graph
+    if _compiled_graph is None:
+        _compiled_graph = build_graph()
+    return _compiled_graph
+
+
+# ─── Consent Gate (kept for direct test imports) ───────────────────
 
 def check_consent(state: PatientState) -> str:
     """First node, every interaction. Returns routing decision."""
@@ -38,52 +54,29 @@ def check_consent(state: PatientState) -> str:
     elif state["has_logged_in"] and not state["has_consented"]:
         return "revoked"
     else:
-        # Logged in but consent unknown — treat as never consented
+        # Not logged in but has consent flag — treat as never consented
         return "never_consented"
 
 
-NEVER_CONSENTED_MESSAGE = (
-    "Welcome! To get started with your exercise coaching, "
-    "please log in to MedBridge Go and opt in to coaching support."
-)
-
-REVOKED_MESSAGE = (
-    "We respect your decision. If you'd like to re-enable coaching support "
-    "in the future, you can do so in your MedBridge Go settings. "
-    "Your progress will be right where you left it."
-)
-
-
-# ─── Phase Transitions (deterministic) ──────────────────────────────
+# ─── Phase Transitions (kept for direct test imports) ──────────────
 
 def evaluate_transitions(state: PatientState) -> PatientState:
-    """Apply deterministic phase transitions based on current state.
-
-    Called before routing to ensure phase is up to date.
-    """
+    """Apply deterministic phase transitions based on current state."""
     phase = state["phase"]
 
-    # PENDING → ONBOARDING
     if phase == PHASE_PENDING and state["has_logged_in"] and state["has_consented"]:
-        print(f"  \033[95m⇒ PHASE: PENDING → ONBOARDING\033[0m")
         state = {**state, "phase": PHASE_ONBOARDING}
 
-    # ONBOARDING → ACTIVE is handled by the onboarding subgraph when it completes
-
-    # ACTIVE → RE_ENGAGING
     if phase == PHASE_ACTIVE and state["consecutive_unanswered_count"] >= 1:
-        print(f"  \033[95m⇒ PHASE: ACTIVE → RE_ENGAGING (unanswered: {state['consecutive_unanswered_count']})\033[0m")
         state = {**state, "phase": PHASE_RE_ENGAGING}
 
-    # RE_ENGAGING → DORMANT
     if phase == PHASE_RE_ENGAGING and state["consecutive_unanswered_count"] >= 3:
-        print(f"  \033[95m⇒ PHASE: RE_ENGAGING → DORMANT (unanswered: {state['consecutive_unanswered_count']})\033[0m")
         state = {**state, "phase": PHASE_DORMANT}
 
     return state
 
 
-# ─── Main Router ────────────────────────────────────────────────────
+# ─── Main entry point ─────────────────────────────────────────────
 
 def route_message(
     state: PatientState,
@@ -91,7 +84,7 @@ def route_message(
     trigger_type: str | None = None,
     onboarding_state: dict | None = None,
 ) -> dict[str, Any]:
-    """Main entry point — routes to the appropriate subgraph.
+    """Main entry point — invokes the LangGraph state graph.
 
     Args:
         state: Current patient state.
@@ -105,186 +98,25 @@ def route_message(
             - state: updated PatientState
             - onboarding_state: updated onboarding state (if applicable)
     """
-    # ─── Consent gate (every interaction) ───
-    consent = check_consent(state)
-    print(f"  \033[96m◆ CONSENT GATE: {consent}\033[0m")
-    if consent == "never_consented":
-        return {
-            "response": NEVER_CONSENTED_MESSAGE,
-            "state": state,
-            "onboarding_state": onboarding_state,
-        }
-    if consent == "revoked":
-        return {
-            "response": REVOKED_MESSAGE,
-            "state": state,
-            "onboarding_state": onboarding_state,
-        }
+    graph = _get_graph()
 
-    # ─── Safety check on incoming patient messages ───
-    if patient_message is not None:
-        classification = classify_message(patient_message)
-        if classification == "mental_health_crisis":
-            execute_tool("alert_clinician", {
-                "patient_id": state["patient_id"],
-                "alert_type": "mental_health_crisis",
-                "urgency": "urgent",
-                "context": f"Patient message: {patient_message}",
-            })
-            state = _append_messages(state, patient_message, CRISIS_MESSAGE)
-            state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-            return {
-                "response": CRISIS_MESSAGE,
-                "state": state,
-                "onboarding_state": onboarding_state,
-            }
-
-    # ─── Apply deterministic transitions ───
-    state = evaluate_transitions(state)
-    phase = state["phase"]
-    print(f"  \033[96m◆ ROUTING: phase={phase}\033[0m")
-
-    # ─── DORMANT: patient reaching out ───
-    if phase == PHASE_DORMANT and patient_message is not None:
-        dormant_result = handle_dormant_message(state, patient_message)
-        state = _merge_updates(state, dormant_result["parent_updates"])
-        # Now dispatch to re-engaging
-        result = run_warm_reengagement(state, patient_message)
-        state = _merge_updates(state, result["parent_updates"])
-        if result["response"]:
-            state = _append_messages(state, patient_message, result["response"])
-            state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-        return {
-            "response": result["response"],
-            "state": state,
-            "onboarding_state": onboarding_state,
-        }
-
-    # ─── PENDING ───
-    if phase == PHASE_PENDING:
-        return {
-            "response": NEVER_CONSENTED_MESSAGE,
-            "state": state,
-            "onboarding_state": onboarding_state,
-        }
-
-    # ─── ONBOARDING ───
-    if phase == PHASE_ONBOARDING:
-        result = run_onboarding(state, onboarding_state, patient_message)
-        state = _merge_updates(state, result["parent_updates"])
-        if result["response"]:
-            if patient_message:
-                state = _append_messages(state, patient_message, result["response"])
-            else:
-                state = _append_message(state, "assistant", result["response"])
-            state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-        return {
-            "response": result["response"],
-            "state": state,
-            "onboarding_state": result["onboarding_state"],
-        }
-
-    # ─── ACTIVE ───
-    if phase == PHASE_ACTIVE:
-        if trigger_type is not None:
-            # CLI-triggered check-in
-            result = run_checkin(state, trigger_type)
-            state = _merge_updates(state, result["parent_updates"])
-            # Re-evaluate transitions after unanswered count updated
-            state = evaluate_transitions(state)
-            if result["response"]:
-                state = _append_message(state, "assistant", result["response"])
-                state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-            return {
-                "response": result["response"],
-                "state": state,
-                "onboarding_state": onboarding_state,
-            }
-        elif patient_message is not None:
-            result = run_active_response(state, patient_message)
-            state = _merge_updates(state, result["parent_updates"])
-            if result["response"]:
-                state = _append_messages(state, patient_message, result["response"])
-                state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-            return {
-                "response": result["response"],
-                "state": state,
-                "onboarding_state": onboarding_state,
-            }
-
-    # ─── RE_ENGAGING ───
-    if phase == PHASE_RE_ENGAGING:
-        if patient_message is not None:
-            # Patient responded during re-engagement
-            result = run_warm_reengagement(state, patient_message)
-            state = _merge_updates(state, result["parent_updates"])
-            if result["response"]:
-                state = _append_messages(state, patient_message, result["response"])
-                state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-            return {
-                "response": result["response"],
-                "state": state,
-                "onboarding_state": onboarding_state,
-            }
-        elif trigger_type is not None:
-            # Any trigger in RE_ENGAGING is treated as a backoff nudge
-            result = run_nudge(state)
-            state = _merge_updates(state, result["parent_updates"])
-            # Record the trigger so it greys out in the UI
-            if trigger_type not in state.get("completed_checkins", []):
-                state = {**state, "completed_checkins": state["completed_checkins"] + [trigger_type]}
-            # Re-evaluate transitions after nudge updated unanswered count
-            state = evaluate_transitions(state)
-            if result["response"]:
-                state = _append_message(state, "assistant", result["response"])
-                state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
-            return {
-                "response": result["response"],
-                "state": state,
-                "onboarding_state": onboarding_state,
-            }
-
-    # ─── DORMANT (no outbound) ───
-    if phase == PHASE_DORMANT:
-        enter_dormant(state)
-        # Record trigger if one was fired
-        if trigger_type and trigger_type not in state.get("completed_checkins", []):
-            state = {**state, "completed_checkins": state["completed_checkins"] + [trigger_type]}
-        return {
-            "response": None,
-            "state": state,
-            "onboarding_state": onboarding_state,
-        }
-
-    # Fallback
-    return {
-        "response": None,
-        "state": state,
+    graph_input = {
+        "patient_state": state,
+        "patient_message": patient_message,
+        "trigger_type": trigger_type,
         "onboarding_state": onboarding_state,
+        "response": None,
+        "updated_patient_state": state,
+        "updated_onboarding_state": onboarding_state,
+        "consent_result": "",
+        "safety_result": "",
+        "phase": state["phase"],
     }
 
+    result = graph.invoke(graph_input)
 
-# ─── Helpers ────────────────────────────────────────────────────────
-
-def _merge_updates(state: PatientState, updates: dict) -> PatientState:
-    """Merge subgraph updates into parent state."""
-    if not updates:
-        return state
-    return {**state, **updates}
-
-
-def _append_message(state: PatientState, role: str, content: str) -> PatientState:
-    """Append a single message to conversation history."""
-    messages = state["messages"] + [{"role": role, "content": content}]
-    return {**state, "messages": messages}
-
-
-def _append_messages(
-    state: PatientState, user_msg: str, assistant_msg: str
-) -> PatientState:
-    """Append a user message and assistant response to history."""
-    messages = state["messages"] + [
-        {"role": "user", "content": user_msg},
-        {"role": "assistant", "content": assistant_msg},
-    ]
-    return {**state, "messages": messages}
+    return {
+        "response": result.get("response"),
+        "state": result.get("updated_patient_state", state),
+        "onboarding_state": result.get("updated_onboarding_state", onboarding_state),
+    }

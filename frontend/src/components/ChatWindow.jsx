@@ -91,13 +91,6 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
               {!canTrigger(type) && " ✓"}
             </button>
           ))}
-          <button
-            className="btn-trigger btn-backoff"
-            onClick={() => onTrigger("backoff")}
-            disabled={loading}
-          >
-            backoff
-          </button>
         </div>
       </div>
 

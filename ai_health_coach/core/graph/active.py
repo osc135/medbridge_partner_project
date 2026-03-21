@@ -5,18 +5,14 @@ Handles Day 2, 5, 7 check-ins with tone adjusted by adherence data.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from ai_health_coach.core.llm import get_llm
-from ai_health_coach.core.safety.classifier import (
-    SAFE_PROMPT_ADDITION,
-    check_and_filter_message,
-)
+from ai_health_coach.core.llm import safe_generate, tool_calling_generate
+from ai_health_coach.core.simulation import get_current_date
 from ai_health_coach.core.state.schemas import ActiveState, PatientState
-from ai_health_coach.core.tools.definitions import execute_tool
+from ai_health_coach.core.tools.definitions import execute_tool, get_tools_for_phase
 
 
 POSITIVE_INDICATORS = [
@@ -59,21 +55,24 @@ CHECKIN_DESCRIPTIONS = {
 CHECKIN_PROMPT = """You are a supportive health coach sending a scheduled check-in to a patient.
 
 Patient name: {patient_name}
+Patient ID: {patient_id}
 Patient goal: {goal_type} {frequency} in the {time_of_day}
 Assigned exercises: {exercises}
-Adherence so far: {adherence_summary}
-Tone: {tone}
 
 {checkin_context}
 
 IMPORTANT:
+- First, call get_adherence_summary with patient_id='{patient_id}' to check how the patient is doing.
+- Use the adherence data to pick the right tone:
+  - 80%+ completion → celebration
+  - 50%+ and improving → encouragement
+  - 50%+ and stable → regular check-in
+  - Below 50% → nudge (be direct, remind them of their commitment)
 - This is a NEW check-in message. Do NOT repeat or rephrase anything you've already said.
 - Reference their specific goal naturally
-- Match the tone specified
 - Ask them a specific question about how it's going
 - Do not give clinical advice
 - Keep it to 2-3 sentences
-- If tone is "nudge", be direct — remind them what they committed to and ask what they can do today
 """
 
 RESPONSE_PROMPT = """You are an accountability-focused health coach. You are warm but firm — your job \
@@ -96,9 +95,14 @@ goal THEY chose.
 """
 
 
-def determine_tone(patient_id: str) -> str:
-    """Determine the check-in tone from adherence data."""
-    adherence_result = execute_tool("get_adherence_summary", {"patient_id": patient_id})
+def determine_tone(patient_id: str, adherence_result: dict | None = None) -> str:
+    """Determine the check-in tone from adherence data.
+
+    Pass adherence_result to avoid a redundant tool call when the caller
+    already has the data.
+    """
+    if adherence_result is None:
+        adherence_result = execute_tool("get_adherence_summary", {"patient_id": patient_id})
 
     if not adherence_result.get("success"):
         return "checkin"  # Default tone on failure
@@ -128,20 +132,11 @@ def run_checkin(
         - active_state: ActiveState
         - parent_updates: dict
     """
-    tone = determine_tone(parent_state["patient_id"])
     goal = parent_state.get("goal") or {}
 
     exercises = ", ".join(
         f"{ex['name']} ({ex['sets']}x{ex['reps']})" for ex in parent_state["assigned_exercises"]
     ) or "your exercises"
-
-    # Build adherence summary string for the prompt
-    adherence_result = execute_tool("get_adherence_summary", {"patient_id": parent_state["patient_id"]})
-    if adherence_result.get("success"):
-        adh = adherence_result["adherence"]
-        adherence_str = f"{adh['completed_days']}/{adh['total_days']} days completed ({int(adh['completion_rate'] * 100)}%), trend: {adh['trend']}"
-    else:
-        adherence_str = "No data yet"
 
     checkin_context = CHECKIN_DESCRIPTIONS.get(
         checkin_type,
@@ -150,18 +145,26 @@ def run_checkin(
 
     prompt = CHECKIN_PROMPT.format(
         patient_name=parent_state["patient_name"],
+        patient_id=parent_state["patient_id"],
         goal_type=goal.get("goal_type", "exercise"),
         frequency=goal.get("frequency", "regularly"),
         time_of_day=goal.get("time_of_day", "your preferred time"),
         exercises=exercises,
-        adherence_summary=adherence_str,
         checkin_context=checkin_context,
-        tone=tone,
     )
 
     messages = [SystemMessage(content=prompt)]
 
-    response = _safe_generate(messages)
+    tools = get_tools_for_phase("ACTIVE")
+    result = tool_calling_generate(messages, tools)
+    response = result["message"]
+
+    # Extract adherence data from tool calls if the LLM fetched it
+    adherence_result = None
+    for tc in result["tool_calls_made"]:
+        if tc["name"] == "get_adherence_summary" and tc["result"].get("success"):
+            adherence_result = tc["result"]
+    tone = determine_tone(parent_state["patient_id"], adherence_result=adherence_result)
 
     active_state = ActiveState(
         current_checkin=checkin_type,
@@ -173,7 +176,7 @@ def run_checkin(
 
     # Log as missed since this is an outbound check-in (patient hasn't responded yet)
     log_entry = {
-        "date": datetime.now().strftime("%Y-%m-%d"),
+        "date": get_current_date(),
         "completed": False,
         "source": f"unanswered_{checkin_type}",
     }
@@ -221,7 +224,7 @@ def run_active_response(
             messages.append(HumanMessage(content=msg["content"]))
     messages.append(HumanMessage(content=patient_message))
 
-    response = _safe_generate(messages)
+    response = safe_generate(messages)
 
     active_state = ActiveState(
         current_checkin=parent_state["completed_checkins"][-1] if parent_state["completed_checkins"] else "day_2",
@@ -238,7 +241,7 @@ def run_active_response(
     adherence = _detect_adherence(patient_message)
     if adherence is not None:
         log_entry = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
+            "date": get_current_date(),
             "completed": adherence,
             "source": "patient_response",
         }
@@ -250,18 +253,3 @@ def run_active_response(
         "active_state": active_state,
         "parent_updates": parent_updates,
     }
-
-
-def _safe_generate(prompt_messages: list) -> str:
-    """Generate with safety check."""
-    llm = get_llm()
-    response = llm.invoke(prompt_messages)
-    message_text = response.content
-
-    def regenerate():
-        augmented = prompt_messages.copy()
-        augmented.append(SystemMessage(content=SAFE_PROMPT_ADDITION))
-        return llm.invoke(augmented).content
-
-    result = check_and_filter_message(message_text, regenerate_fn=regenerate)
-    return result["final_message"]

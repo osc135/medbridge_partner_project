@@ -1,8 +1,6 @@
 """Tests for tool definitions and execution."""
 
-import json
 import os
-import tempfile
 
 from ai_health_coach.core.tools.definitions import (
     SUBGRAPH_TOOLS,

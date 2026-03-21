@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+
+from ai_health_coach.core.simulation import get_current_date, set_simulated_date
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -106,7 +108,7 @@ def get_patient(patient_id: str):
 
 @app.post("/api/patients")
 def create_patient(req: CreatePatientRequest):
-    start_date = req.start_date or datetime.now().strftime("%Y-%m-%d")
+    start_date = req.start_date or get_current_date()
     state = create_initial_state(
         patient_id=req.patient_id,
         patient_name=req.name,
@@ -202,3 +204,77 @@ def update_consent(patient_id: str, req: ConsentRequest):
             save_onboarding_state(patient_id, result["onboarding_state"])
 
         return ChatResponse(response=result["response"], phase=state["phase"])
+
+
+# ─── Simulation Clock ─────────────────────────────────────────────
+
+
+class SetDateRequest(BaseModel):
+    date: str  # YYYY-MM-DD
+
+
+@app.get("/api/simulation/date")
+def get_sim_date():
+    return {"date": get_current_date()}
+
+
+@app.post("/api/simulation/date")
+def set_sim_date(req: SetDateRequest):
+    set_simulated_date(req.date)
+    # Fire any due reminders for all patients
+    fired = _fire_due_reminders()
+    return {"date": req.date, "reminders_fired": fired}
+
+
+def _fire_due_reminders() -> list[dict]:
+    """Check all patients for due reminders and fire them."""
+    current = get_current_date()
+    patients = list_patients()
+    fired = []
+
+    for p in patients:
+        state = load_state(p["patient_id"])
+        if state is None:
+            continue
+
+        for reminder in state.get("reminders", []):
+            if reminder["sent"]:
+                continue
+            if reminder["scheduled_for"] > current:
+                continue
+            # Skip if already completed
+            if reminder["type"] in state.get("completed_checkins", []):
+                # Mark as sent so we don't recheck
+                reminder["sent"] = True
+                save_state(state)
+                continue
+
+            # Fire the trigger
+            onboarding_state = load_onboarding_state(p["patient_id"])
+            result = route_message(
+                state,
+                trigger_type=reminder["type"],
+                onboarding_state=onboarding_state,
+            )
+
+            state = result["state"]
+            # Mark reminder as sent
+            updated_reminders = []
+            for r in state.get("reminders", []):
+                if r["type"] == reminder["type"]:
+                    updated_reminders.append({**r, "sent": True})
+                else:
+                    updated_reminders.append(r)
+            state = {**state, "reminders": updated_reminders}
+            save_state(state)
+
+            fired.append({
+                "patient_id": p["patient_id"],
+                "trigger": reminder["type"],
+                "response": result["response"],
+            })
+
+            # Reload state since it may have changed phase
+            state = load_state(p["patient_id"])
+
+    return fired

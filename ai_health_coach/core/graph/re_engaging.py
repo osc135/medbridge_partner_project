@@ -10,18 +10,14 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from ai_health_coach.core.llm import get_llm
-from ai_health_coach.core.safety.classifier import (
-    SAFE_PROMPT_ADDITION,
-    check_and_filter_message,
-)
+from ai_health_coach.core.llm import safe_generate, tool_calling_generate
 from ai_health_coach.core.state.schemas import (
-    BACKOFF_SCHEDULE,
+    PHASE_ACTIVE,
     PHASE_DORMANT,
     ReEngagingState,
     PatientState,
 )
-from ai_health_coach.core.tools.definitions import execute_tool
+from ai_health_coach.core.tools.definitions import execute_tool, get_tools_for_phase
 
 NUDGE_PROMPT = """You are a supportive health coach. The patient hasn't responded to your last message(s).
 
@@ -56,42 +52,10 @@ def run_nudge(
     backoff_step = parent_state["current_backoff_step"] + 1
     goal = parent_state.get("goal") or {}
 
-    # Check if we've hit dormant threshold (using post-increment count)
-    if unanswered >= 3:
-        # Transition to DORMANT + alert clinician
-        if not parent_state["clinician_alerted"]:
-            alert_result = execute_tool("alert_clinician", {
-                "patient_id": parent_state["patient_id"],
-                "alert_type": "disengagement",
-                "urgency": "routine",
-                "context": f"Patient has not responded to {unanswered} consecutive messages.",
-            })
-            parent_updates = {
-                "phase": PHASE_DORMANT,
-                "clinician_alerted": True,
-                "current_backoff_step": backoff_step,
-            }
-            if not alert_result.get("success"):
-                parent_updates["failed_alerts"] = parent_state["failed_alerts"] + [{
-                    "type": "disengagement",
-                    "patient_id": parent_state["patient_id"],
-                    "error": alert_result.get("error", "unknown"),
-                }]
-        else:
-            parent_updates = {
-                "phase": PHASE_DORMANT,
-                "current_backoff_step": backoff_step,
-            }
+    # Build nudge prompt — if hitting dormant threshold, instruct LLM to alert clinician
+    hitting_dormant = unanswered >= 3 and not parent_state["clinician_alerted"]
 
-        re_engaging_state = ReEngagingState(reengagement_trigger="missed_checkin")
-        return {
-            "response": None,
-            "re_engaging_state": re_engaging_state,
-            "parent_updates": parent_updates,
-        }
-
-    # Generate nudge
-    prompt = NUDGE_PROMPT.format(
+    nudge_instructions = NUDGE_PROMPT.format(
         patient_name=parent_state["patient_name"],
         goal_type=goal.get("goal_type", "exercise"),
         frequency=goal.get("frequency", "regularly"),
@@ -100,15 +64,48 @@ def run_nudge(
         trigger="missed_checkin",
     )
 
-    messages = [SystemMessage(content=prompt)]
-    response = _safe_generate(messages)
+    if hitting_dormant:
+        nudge_instructions += (
+            f"\n\nIMPORTANT: This patient has not responded to {unanswered} consecutive messages. "
+            f"You MUST call alert_clinician with patient_id='{parent_state['patient_id']}', "
+            f"alert_type='disengagement', urgency='routine', "
+            f"context='Patient has not responded to {unanswered} consecutive messages.' "
+            f"Then write your final nudge message to the patient."
+        )
+
+    messages = [SystemMessage(content=nudge_instructions)]
+
+    if hitting_dormant:
+        tools = get_tools_for_phase("RE_ENGAGING")
+        result = tool_calling_generate(messages, tools)
+        response = result["message"]
+
+        # Verify alert was sent — fall back if LLM didn't call it
+        alert_sent = any(
+            tc["name"] == "alert_clinician" and tc["result"].get("success")
+            for tc in result["tool_calls_made"]
+        )
+        if not alert_sent:
+            execute_tool("alert_clinician", {
+                "patient_id": parent_state["patient_id"],
+                "alert_type": "disengagement",
+                "urgency": "routine",
+                "context": f"Patient has not responded to {unanswered} consecutive messages.",
+            })
+    else:
+        response = safe_generate(messages)
 
     re_engaging_state = ReEngagingState(reengagement_trigger="missed_checkin")
 
     parent_updates = {
-        "consecutive_unanswered_count": unanswered,  # Already incremented above
+        "consecutive_unanswered_count": unanswered,
         "current_backoff_step": backoff_step,
     }
+
+    # Transition to dormant AFTER sending the message
+    if unanswered >= 3:
+        parent_updates["phase"] = PHASE_DORMANT
+        parent_updates["clinician_alerted"] = True
 
     return {
         "response": response,
@@ -145,7 +142,7 @@ def run_warm_reengagement(
             messages.append(HumanMessage(content=msg["content"]))
     messages.append(HumanMessage(content=patient_message))
 
-    response = _safe_generate(messages)
+    response = safe_generate(messages)
 
     trigger = "returning_from_dormant" if parent_state["phase"] == PHASE_DORMANT else "backoff_response"
     re_engaging_state = ReEngagingState(reengagement_trigger=trigger)
@@ -154,7 +151,7 @@ def run_warm_reengagement(
         "consecutive_unanswered_count": 0,
         "current_backoff_step": 0,
         "clinician_alerted": False,
-        "phase": "ACTIVE",
+        "phase": PHASE_ACTIVE,
     }
 
     return {
@@ -162,18 +159,3 @@ def run_warm_reengagement(
         "re_engaging_state": re_engaging_state,
         "parent_updates": parent_updates,
     }
-
-
-def _safe_generate(prompt_messages: list) -> str:
-    """Generate with safety check."""
-    llm = get_llm()
-    response = llm.invoke(prompt_messages)
-    message_text = response.content
-
-    def regenerate():
-        augmented = prompt_messages.copy()
-        augmented.append(SystemMessage(content=SAFE_PROMPT_ADDITION))
-        return llm.invoke(augmented).content
-
-    result = check_and_filter_message(message_text, regenerate_fn=regenerate)
-    return result["final_message"]

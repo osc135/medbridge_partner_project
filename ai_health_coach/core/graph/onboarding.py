@@ -9,36 +9,38 @@ import json
 from datetime import datetime, timedelta
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langgraph.graph import END, StateGraph
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from ai_health_coach.core.llm import get_llm
-from ai_health_coach.core.safety.classifier import (
-    SAFE_PROMPT_ADDITION,
-    check_and_filter_message,
-)
+from ai_health_coach.core.llm import get_llm, safe_generate as _safe_generate, tool_calling_generate
 from ai_health_coach.core.state.schemas import (
     MAX_CONFIRMATION_ATTEMPTS,
     MAX_GOAL_NEGOTIATION_ATTEMPTS,
+    PHASE_ACTIVE,
     STEP_COMPLETE,
     STEP_CONFIRMING,
     STEP_ELICITING,
-    STEP_EXTRACTING,
     STEP_WELCOMING,
     OnboardingState,
     PatientState,
 )
 from ai_health_coach.core.tools.definitions import execute_tool, get_tools_for_phase
 
-EXTRACTION_PROMPT = """Extract a structured goal from the patient's message.
+EXTRACTION_PROMPT = """Extract a structured exercise goal from the conversation so far.
 Return only JSON with these fields:
 - goal_type: str (e.g. "exercise", "stretching")
 - frequency: str (e.g. "daily", "3x per week")
-- time_of_day: str (e.g. "morning", "evening")
+- time_of_day: str (e.g. "morning", "evening", "morning on Tuesdays, afternoon other days")
 
-If any field cannot be determined, set it to null.
+For time_of_day, if the patient described a mixed schedule (e.g. different times on
+different days), combine them into a single descriptive string. Do NOT leave it null
+if the patient gave any time-related information.
 
-Patient message: {patient_message}"""
+If a field truly cannot be determined from the conversation, set it to null.
+
+Conversation context:
+{conversation_context}
+
+Latest patient message: {patient_message}"""
 
 
 def _build_system_prompt(state: PatientState) -> str:
@@ -60,31 +62,6 @@ def _build_system_prompt(state: PatientState) -> str:
         f"Patient name: {state['patient_name']}\n"
         f"Prescribed exercises:\n{exercises_str}\n"
     )
-
-
-def _safe_generate(prompt_messages: list, tools: list | None = None) -> str:
-    """Generate a message with safety check and retry/fallback."""
-    llm = get_llm()
-
-    if tools:
-        response = llm.bind_tools(tools).invoke(prompt_messages)
-    else:
-        response = llm.invoke(prompt_messages)
-
-    # If the LLM made a tool call, handle it
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        return response  # Return full response for tool handling
-
-    message_text = response.content
-
-    def regenerate():
-        augmented = prompt_messages.copy()
-        augmented.append(SystemMessage(content=SAFE_PROMPT_ADDITION))
-        retry_resp = llm.invoke(augmented)
-        return retry_resp.content
-
-    result = check_and_filter_message(message_text, regenerate_fn=regenerate)
-    return result["final_message"]
 
 
 def run_onboarding(
@@ -119,7 +96,6 @@ def run_onboarding(
             messages_history.append(HumanMessage(content=msg["content"]))
 
     parent_updates: dict[str, Any] = {}
-    tools = get_tools_for_phase("ONBOARDING")
 
     # --- WELCOMING ---
     if step == STEP_WELCOMING:
@@ -158,10 +134,17 @@ def run_onboarding(
         # Patient responded — move to extraction
         messages_history.append(HumanMessage(content=patient_message))
 
-        # Extract structured goal via dedicated LLM call
+        # Extract structured goal via dedicated LLM call (with conversation context)
         llm = get_llm()
+        conversation_context = "\n".join(
+            f"{'Coach' if m['role'] == 'assistant' else 'Patient'}: {m['content']}"
+            for m in parent_state["messages"][-6:]
+        )
         extraction_response = llm.invoke(
-            [SystemMessage(content=EXTRACTION_PROMPT.format(patient_message=patient_message))]
+            [SystemMessage(content=EXTRACTION_PROMPT.format(
+                conversation_context=conversation_context,
+                patient_message=patient_message,
+            ))]
         )
 
         try:
@@ -206,13 +189,15 @@ def run_onboarding(
             }
 
         # Check for missing fields — ask follow-up before confirming
+        # But don't loop forever: after a few rounds, accept what we have
+        eliciting_rounds = onboarding_state["goal_negotiation_attempts"]
         missing = []
         if not goal_draft.get("frequency"):
             missing.append("how often (e.g. daily, 3x per week)")
         if not goal_draft.get("time_of_day"):
             missing.append("what time of day (morning, afternoon, or evening)")
 
-        if missing:
+        if missing and eliciting_rounds < 2:
             # Save what we have so far and ask for the rest
             onboarding_state = OnboardingState(
                 onboarding_step=STEP_ELICITING,
@@ -237,10 +222,14 @@ def run_onboarding(
                 "parent_updates": parent_updates,
             }
 
-        # Default goal_type if missing — derive from assigned exercises
+        # Fill in defaults for any remaining missing fields
         if not goal_draft.get("goal_type"):
             exercise_names = [ex["name"] for ex in parent_state["assigned_exercises"]]
             goal_draft["goal_type"] = ", ".join(exercise_names) if exercise_names else "exercise"
+        if not goal_draft.get("frequency"):
+            goal_draft["frequency"] = "daily"
+        if not goal_draft.get("time_of_day"):
+            goal_draft["time_of_day"] = "morning"
 
         # Goal looks good — move to confirmation
         onboarding_state = OnboardingState(
@@ -281,46 +270,65 @@ def run_onboarding(
         confirmation_attempts = onboarding_state["confirmation_attempts"] + 1
 
         if _is_confirmation(patient_message):
-            # Patient confirmed — complete onboarding
+            # Patient confirmed — let the LLM autonomously call tools
             goal = onboarding_state["goal_draft"]
 
-            # Call set_goal tool
-            tool_result = execute_tool("set_goal", {
-                "patient_id": parent_state["patient_id"],
-                "goal_type": goal.get("goal_type") or "exercise",
-                "frequency": goal.get("frequency") or "daily",
-                "time_of_day": goal.get("time_of_day") or "morning",
-            })
+            start = datetime.strptime(parent_state["program_start_date"], "%Y-%m-%d")
+            day_2 = (start + timedelta(days=2)).strftime("%Y-%m-%d")
+            day_5 = (start + timedelta(days=5)).strftime("%Y-%m-%d")
+            day_7 = (start + timedelta(days=7)).strftime("%Y-%m-%d")
 
-            if not tool_result.get("success"):
-                # Retry once
-                tool_result = execute_tool("set_goal", {
-                    "patient_id": parent_state["patient_id"],
+            pid = parent_state["patient_id"]
+            goal_desc = _format_goal(goal)
+            messages_history.append(
+                SystemMessage(
+                    content=(
+                        f"The patient confirmed their goal: {goal_desc}. "
+                        f"You MUST now:\n"
+                        f"1. Call set_goal with patient_id='{pid}', "
+                        f"goal_type='{goal.get('goal_type') or 'exercise'}', "
+                        f"frequency='{goal.get('frequency') or 'daily'}', "
+                        f"time_of_day='{goal.get('time_of_day') or 'morning'}'\n"
+                        f"2. Call set_reminder with patient_id='{pid}', "
+                        f"scheduled_for='{day_2}', interaction_type='day_2_checkin'\n"
+                        f"3. Call set_reminder with patient_id='{pid}', "
+                        f"scheduled_for='{day_5}', interaction_type='day_5_checkin'\n"
+                        f"4. Call set_reminder with patient_id='{pid}', "
+                        f"scheduled_for='{day_7}', interaction_type='day_7_checkin'\n"
+                        f"5. After all tools succeed, celebrate this moment with the patient. "
+                        f"Let them know you'll check in with them over the coming days. "
+                        f"Keep it brief and encouraging."
+                    )
+                )
+            )
+
+            tools = get_tools_for_phase("ONBOARDING")
+            result = tool_calling_generate(messages_history, tools)
+
+            # Verify set_goal was actually called
+            goal_saved = any(
+                tc["name"] == "set_goal" and tc["result"].get("success")
+                for tc in result["tool_calls_made"]
+            )
+
+            if not goal_saved:
+                # LLM didn't call set_goal — fall back to direct calls
+                execute_tool("set_goal", {
+                    "patient_id": pid,
                     "goal_type": goal.get("goal_type") or "exercise",
                     "frequency": goal.get("frequency") or "daily",
                     "time_of_day": goal.get("time_of_day") or "morning",
                 })
-                if not tool_result.get("success"):
-                    messages_history.append(
-                        SystemMessage(
-                            content="There was a technical issue saving the goal. Apologize briefly and let them know we'll try again."
-                        )
-                    )
-                    response = _safe_generate(messages_history)
-                    return {
-                        "response": response,
-                        "onboarding_state": onboarding_state,
-                        "parent_updates": parent_updates,
-                    }
 
-            # Schedule Day 2 check-in
-            start = datetime.strptime(parent_state["program_start_date"], "%Y-%m-%d")
-            day_2 = (start + timedelta(days=2)).strftime("%Y-%m-%d")
-            execute_tool("set_reminder", {
-                "patient_id": parent_state["patient_id"],
-                "scheduled_for": day_2,
-                "interaction_type": "day_2_checkin",
-            })
+            # Ensure all 3 reminders are scheduled (fallback for any the LLM missed)
+            scheduled = {tc["args"].get("interaction_type") for tc in result["tool_calls_made"] if tc["name"] == "set_reminder"}
+            for day_date, day_type in [(day_2, "day_2_checkin"), (day_5, "day_5_checkin"), (day_7, "day_7_checkin")]:
+                if day_type not in scheduled:
+                    execute_tool("set_reminder", {
+                        "patient_id": pid,
+                        "scheduled_for": day_date,
+                        "interaction_type": day_type,
+                    })
 
             onboarding_state = OnboardingState(
                 onboarding_step=STEP_COMPLETE,
@@ -330,45 +338,48 @@ def run_onboarding(
             )
 
             parent_updates["goal"] = goal
-            parent_updates["phase"] = "ACTIVE"
+            parent_updates["phase"] = PHASE_ACTIVE
 
-            messages_history.append(
-                SystemMessage(
-                    content=(
-                        "The patient confirmed their goal! Celebrate this moment. "
-                        "Let them know you'll check in with them in a couple of days. "
-                        "Keep it brief and encouraging."
-                    )
-                )
-            )
-            response = _safe_generate(messages_history)
             return {
-                "response": response,
+                "response": result["message"],
                 "onboarding_state": onboarding_state,
                 "parent_updates": parent_updates,
             }
 
         elif _is_rejection(patient_message):
             if confirmation_attempts >= MAX_CONFIRMATION_ATTEMPTS:
-                # Patient refuses to commit — alert clinician
-                execute_tool("alert_clinician", {
-                    "patient_id": parent_state["patient_id"],
-                    "alert_type": "disengagement",
-                    "urgency": "routine",
-                    "context": "Patient refused to commit to a goal after multiple attempts during onboarding.",
-                })
+                # Patient refuses to commit — let LLM call alert_clinician
                 messages_history.append(
                     SystemMessage(
                         content=(
-                            "The patient doesn't want to commit to a goal right now. "
-                            "That's okay — be understanding. Let them know their care team "
-                            "will follow up, and they can set a goal whenever they're ready."
+                            "The patient doesn't want to commit to a goal after multiple attempts. "
+                            f"You MUST call alert_clinician with patient_id='{parent_state['patient_id']}', "
+                            f"alert_type='disengagement', urgency='routine', "
+                            f"context='Patient refused to commit to a goal after multiple attempts during onboarding.'\n"
+                            "After calling the tool, respond to the patient: be understanding, "
+                            "let them know their care team will follow up, and they can set a "
+                            "goal whenever they're ready."
                         )
                     )
                 )
-                response = _safe_generate(messages_history)
+                tools = get_tools_for_phase("ONBOARDING")
+                result = tool_calling_generate(messages_history, tools)
+
+                # Verify alert was sent — fall back if LLM didn't call it
+                alert_sent = any(
+                    tc["name"] == "alert_clinician" and tc["result"].get("success")
+                    for tc in result["tool_calls_made"]
+                )
+                if not alert_sent:
+                    execute_tool("alert_clinician", {
+                        "patient_id": parent_state["patient_id"],
+                        "alert_type": "disengagement",
+                        "urgency": "routine",
+                        "context": "Patient refused to commit to a goal after multiple attempts during onboarding.",
+                    })
+
                 return {
-                    "response": response,
+                    "response": result["message"],
                     "onboarding_state": onboarding_state,
                     "parent_updates": parent_updates,
                 }

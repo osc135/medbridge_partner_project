@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Optional, TypedDict
 
 
 class PatientState(TypedDict):
@@ -79,6 +79,30 @@ class SafetyCheckState(TypedDict):
     flag_reason: str | None  # "clinical" | "mental_health_crisis" | None
     retry_count: int
     final_message: str
+
+
+class GraphState(TypedDict, total=False):
+    """Ephemeral state for a single LangGraph invocation.
+
+    Not persisted — exists only during graph execution. Uses total=False
+    so fields can be omitted when constructing partial updates from nodes.
+    """
+
+    # Inputs (set before graph invocation)
+    patient_state: PatientState
+    patient_message: Optional[str]
+    trigger_type: Optional[str]
+    onboarding_state: Optional[dict]
+
+    # Outputs (populated by nodes)
+    response: Optional[str]
+    updated_patient_state: PatientState
+    updated_onboarding_state: Optional[dict]
+
+    # Internal routing (used by conditional edges)
+    consent_result: str
+    safety_result: str
+    phase: str
 
 
 # Phase constants
