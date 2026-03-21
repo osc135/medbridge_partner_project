@@ -52,11 +52,11 @@ def run_nudge(
         - re_engaging_state: ReEngagingState
         - parent_updates: dict
     """
-    unanswered = parent_state["consecutive_unanswered_count"]
+    unanswered = parent_state["consecutive_unanswered_count"] + 1  # Post-increment value
     backoff_step = parent_state["current_backoff_step"] + 1
     goal = parent_state.get("goal") or {}
 
-    # Check if we've hit dormant threshold
+    # Check if we've hit dormant threshold (using post-increment count)
     if unanswered >= 3:
         # Transition to DORMANT + alert clinician
         if not parent_state["clinician_alerted"]:
@@ -106,7 +106,7 @@ def run_nudge(
     re_engaging_state = ReEngagingState(reengagement_trigger="missed_checkin")
 
     parent_updates = {
-        "consecutive_unanswered_count": unanswered + 1,
+        "consecutive_unanswered_count": unanswered,  # Already incremented above
         "current_backoff_step": backoff_step,
     }
 

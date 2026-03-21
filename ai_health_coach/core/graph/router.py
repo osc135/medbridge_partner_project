@@ -190,6 +190,8 @@ def route_message(
             # CLI-triggered check-in
             result = run_checkin(state, trigger_type)
             state = _merge_updates(state, result["parent_updates"])
+            # Re-evaluate transitions after unanswered count updated
+            state = evaluate_transitions(state)
             if result["response"]:
                 state = _append_message(state, "assistant", result["response"])
                 state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
@@ -224,9 +226,15 @@ def route_message(
                 "state": state,
                 "onboarding_state": onboarding_state,
             }
-        elif trigger_type == "backoff":
+        elif trigger_type is not None:
+            # Any trigger in RE_ENGAGING is treated as a backoff nudge
             result = run_nudge(state)
             state = _merge_updates(state, result["parent_updates"])
+            # Record the trigger so it greys out in the UI
+            if trigger_type not in state.get("completed_checkins", []):
+                state = {**state, "completed_checkins": state["completed_checkins"] + [trigger_type]}
+            # Re-evaluate transitions after nudge updated unanswered count
+            state = evaluate_transitions(state)
             if result["response"]:
                 state = _append_message(state, "assistant", result["response"])
                 state = {**state, "last_contact_date": datetime.now().strftime("%Y-%m-%d")}
@@ -239,6 +247,9 @@ def route_message(
     # ─── DORMANT (no outbound) ───
     if phase == PHASE_DORMANT:
         enter_dormant(state)
+        # Record trigger if one was fired
+        if trigger_type and trigger_type not in state.get("completed_checkins", []):
+            state = {**state, "completed_checkins": state["completed_checkins"] + [trigger_type]}
         return {
             "response": None,
             "state": state,

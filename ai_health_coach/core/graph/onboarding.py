@@ -42,15 +42,23 @@ Patient message: {patient_message}"""
 
 
 def _build_system_prompt(state: PatientState) -> str:
-    exercises = ", ".join(state["assigned_exercises"]) or "your assigned exercises"
+    exercise_details = []
+    for ex in state["assigned_exercises"]:
+        exercise_details.append(f"- {ex['name']}: {ex['sets']} sets x {ex['reps']} reps")
+    exercises_str = "\n".join(exercise_details) or "No exercises assigned"
+
     return (
         "You are a warm but accountability-focused health coach helping a patient stay on track "
         "with their home exercise program. Your job is to help them commit to a goal and follow through. "
         "Be encouraging but never validate skipping. You are NOT a clinician — never give "
         "clinical advice. If the patient asks clinical questions, redirect them "
         "to their care team.\n\n"
+        "IMPORTANT: You have access to the patient's real prescribed program below. When the patient "
+        "asks about their exercises, sets, reps, or how many to do, ONLY reference the exact "
+        "data below. These numbers were set by their care provider. "
+        "NEVER guess, estimate, or suggest 'typical ranges.'\n\n"
         f"Patient name: {state['patient_name']}\n"
-        f"Assigned exercises: {exercises}\n"
+        f"Prescribed exercises:\n{exercises_str}\n"
     )
 
 
@@ -165,6 +173,13 @@ def run_onboarding(
         except (json.JSONDecodeError, IndexError):
             goal_draft = {"goal_type": None, "frequency": None, "time_of_day": None}
 
+        # Merge with existing partial goal if we had one
+        existing_draft = onboarding_state.get("goal_draft")
+        if existing_draft:
+            for key in ["goal_type", "frequency", "time_of_day"]:
+                if not goal_draft.get(key) and existing_draft.get(key):
+                    goal_draft[key] = existing_draft[key]
+
         # Check for unrealistic goals
         negotiation_attempts = onboarding_state["goal_negotiation_attempts"]
         if _is_unrealistic_goal(goal_draft) and negotiation_attempts < MAX_GOAL_NEGOTIATION_ATTEMPTS:
@@ -189,6 +204,43 @@ def run_onboarding(
                 "onboarding_state": onboarding_state,
                 "parent_updates": parent_updates,
             }
+
+        # Check for missing fields — ask follow-up before confirming
+        missing = []
+        if not goal_draft.get("frequency"):
+            missing.append("how often (e.g. daily, 3x per week)")
+        if not goal_draft.get("time_of_day"):
+            missing.append("what time of day (morning, afternoon, or evening)")
+
+        if missing:
+            # Save what we have so far and ask for the rest
+            onboarding_state = OnboardingState(
+                onboarding_step=STEP_ELICITING,
+                confirmation_attempts=0,
+                goal_negotiation_attempts=onboarding_state["goal_negotiation_attempts"],
+                goal_draft=goal_draft,  # Preserve partial goal
+            )
+            missing_str = " and ".join(missing)
+            messages_history.append(
+                SystemMessage(
+                    content=(
+                        f"The patient gave a partial goal but didn't specify {missing_str}. "
+                        "Ask them a brief, friendly follow-up question to fill in the missing details. "
+                        "Don't repeat what they already told you."
+                    )
+                )
+            )
+            response = _safe_generate(messages_history)
+            return {
+                "response": response,
+                "onboarding_state": onboarding_state,
+                "parent_updates": parent_updates,
+            }
+
+        # Default goal_type if missing — derive from assigned exercises
+        if not goal_draft.get("goal_type"):
+            exercise_names = [ex["name"] for ex in parent_state["assigned_exercises"]]
+            goal_draft["goal_type"] = ", ".join(exercise_names) if exercise_names else "exercise"
 
         # Goal looks good — move to confirmation
         onboarding_state = OnboardingState(
@@ -343,16 +395,29 @@ def run_onboarding(
                     "parent_updates": parent_updates,
                 }
         else:
-            # Ambiguous response — ask again
+            # Patient asked a question or gave an ambiguous response.
+            # Answer their question using program data, then steer back to confirmation.
+            exercises = ", ".join(
+                f"{ex['name']} ({ex['sets']} sets x {ex['reps']} reps)"
+                for ex in parent_state["assigned_exercises"]
+            )
             onboarding_state = OnboardingState(
                 onboarding_step=STEP_CONFIRMING,
                 confirmation_attempts=confirmation_attempts,
                 goal_negotiation_attempts=onboarding_state["goal_negotiation_attempts"],
                 goal_draft=onboarding_state["goal_draft"],
             )
+            goal_desc = _format_goal(onboarding_state["goal_draft"])
             messages_history.append(
                 SystemMessage(
-                    content="The patient's response was unclear. Gently ask them to confirm yes or no."
+                    content=(
+                        f"The patient asked a question or gave an unclear response instead of confirming. "
+                        f"Their assigned exercises are: {exercises}. "
+                        f"Their proposed goal is: {goal_desc}. "
+                        "Answer their question helpfully using their program details (exercises, sets, reps). "
+                        "This is NOT clinical advice — you are just referencing what their clinician assigned. "
+                        "After answering, gently steer back to confirming their goal."
+                    )
                 )
             )
             response = _safe_generate(messages_history)

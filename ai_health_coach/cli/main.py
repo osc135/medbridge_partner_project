@@ -37,7 +37,14 @@ def cmd_new(args: argparse.Namespace) -> None:
     """Create a new patient and start onboarding."""
     patient_id = args.patient_id
     name = args.name
-    exercises = [e.strip() for e in args.exercises.split(",")]
+    # Parse "Name:sets:reps,Name:sets:reps" format
+    exercises = []
+    for entry in args.exercises.split(","):
+        parts = [p.strip() for p in entry.split(":")]
+        if len(parts) == 3:
+            exercises.append({"name": parts[0], "sets": int(parts[1]), "reps": int(parts[2])})
+        else:
+            exercises.append({"name": parts[0], "sets": 3, "reps": 10})
     start_date = args.start_date or datetime.now().strftime("%Y-%m-%d")
 
     state = create_initial_state(
@@ -219,7 +226,7 @@ def main() -> None:
     new_parser.add_argument(
         "--exercises",
         required=True,
-        help="Comma-separated exercise list (e.g. 'Quad Sets,Heel Slides')",
+        help="Exercises as 'Name:sets:reps,...' (e.g. 'Quad Sets:3:10,Lunges:2:15')",
     )
     new_parser.add_argument("--start-date", help="Program start date (YYYY-MM-DD, default: today)")
     new_parser.add_argument("--no-consent", action="store_true", help="Create patient without login/consent (demo consent gate)")

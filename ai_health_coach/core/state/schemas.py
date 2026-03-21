@@ -20,8 +20,8 @@ class PatientState(TypedDict):
     # Goal (structured, confirmed — never a draft)
     goal: dict | None
 
-    # Exercises
-    assigned_exercises: list[str]
+    # Exercises — each: {"name": str, "sets": int, "reps": int}
+    assigned_exercises: list[dict]
 
     # Scheduling
     program_start_date: str
@@ -106,7 +106,7 @@ MAX_GOAL_NEGOTIATION_ATTEMPTS = 3
 def create_initial_state(
     patient_id: str,
     patient_name: str,
-    assigned_exercises: list[str],
+    assigned_exercises: list[dict],
     program_start_date: str,
     has_logged_in: bool = False,
     has_consented: bool = False,

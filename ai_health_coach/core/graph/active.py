@@ -89,7 +89,9 @@ def run_checkin(
     tone = determine_tone(parent_state["patient_id"])
     goal = parent_state.get("goal") or {}
 
-    exercises = ", ".join(parent_state["assigned_exercises"]) or "your exercises"
+    exercises = ", ".join(
+        f"{ex['name']} ({ex['sets']}x{ex['reps']})" for ex in parent_state["assigned_exercises"]
+    ) or "your exercises"
 
     prompt = CHECKIN_PROMPT.format(
         patient_name=parent_state["patient_name"],
@@ -117,8 +119,12 @@ def run_checkin(
         interaction_tone=tone,
     )
 
+    # Outbound check-in with no patient reply — count as unanswered
+    unanswered = parent_state["consecutive_unanswered_count"] + 1
+
     parent_updates = {
         "completed_checkins": parent_state["completed_checkins"] + [checkin_type],
+        "consecutive_unanswered_count": unanswered,
     }
 
     return {

@@ -17,6 +17,16 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }
 
   const loadPatients = useCallback(async () => {
     const data = await fetchPatients();
@@ -57,6 +67,11 @@ export default function App() {
   }
 
   async function handleSend(message) {
+    // Optimistic update — show user message immediately
+    setSelectedPatient((prev) => ({
+      ...prev,
+      messages: [...prev.messages, { role: "user", content: message }],
+    }));
     setLoading(true);
     try {
       await sendMessage(selectedId, message);
@@ -104,6 +119,8 @@ export default function App() {
         onTrigger={handleTrigger}
         onConsent={handleConsent}
         loading={loading}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
     </div>
   );

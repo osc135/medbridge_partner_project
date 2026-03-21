@@ -40,7 +40,7 @@ app.add_middleware(
 class CreatePatientRequest(BaseModel):
     patient_id: str
     name: str
-    exercises: list[str]
+    exercises: list[dict]  # [{"name": str, "sets": int, "reps": int}]
     start_date: Optional[str] = None
     no_consent: bool = False
 
@@ -67,7 +67,7 @@ class PatientResponse(BaseModel):
     messages: list[dict]
     consecutive_unanswered_count: int
     completed_checkins: list[str]
-    assigned_exercises: list[str]
+    assigned_exercises: list[dict]
 
 
 class ChatResponse(BaseModel):
@@ -162,7 +162,8 @@ def trigger(patient_id: str, req: TriggerRequest):
     if state is None:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    if req.trigger_type in state.get("completed_checkins", []):
+    # Only block duplicate check-ins while still in ACTIVE phase
+    if state["phase"] == "ACTIVE" and req.trigger_type in state.get("completed_checkins", []):
         raise HTTPException(status_code=400, detail=f"Check-in {req.trigger_type} already completed")
 
     onboarding_state = load_onboarding_state(patient_id)

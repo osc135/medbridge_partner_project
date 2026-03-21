@@ -1,17 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+:root {
+  --bg-primary: #0a0b10;
+  --bg-sidebar: #0e0f16;
+  --bg-input: #12131c;
+  --bg-hover: #14151f;
+  --bg-selected: #181a28;
+  --bg-message: #14151f;
+  --bg-button: #1a1c27;
+  --border: #1a1c27;
+  --border-input: #1e2030;
+  --text-primary: #e5e7eb;
+  --text-secondary: #d1d5db;
+  --text-message: #c4c8d8;
+  --text-muted: #8b8fa3;
+  --text-faint: #565b6b;
+  --text-ghost: #3b3f52;
+  --accent: #6366f1;
+  --accent-hover: #5558e6;
+  --accent-subtle: #181a28;
+  --green: #16a34a;
+  --green-bg: #0a1f13;
+  --green-border: #166534;
+  --green-text: #4ade80;
+  --red-text: #f87171;
+  --red-bg: #1a0a0a;
+  --red-border: #2d1519;
+  --red-deep: #450a0a;
+  --orange-text: #fb923c;
+  --orange-border: #451a03;
+  --orange-bg: #1a0f02;
+  --scrollbar: #2a2d3a;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f8f9fb;
+  --bg-sidebar: #ffffff;
+  --bg-input: #ffffff;
+  --bg-hover: #f3f4f6;
+  --bg-selected: #eef2ff;
+  --bg-message: #f3f4f6;
+  --bg-button: #e5e7eb;
+  --border: #e5e7eb;
+  --border-input: #d1d5db;
+  --text-primary: #111827;
+  --text-secondary: #1f2937;
+  --text-message: #374151;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
+  --text-ghost: #d1d5db;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-subtle: #eef2ff;
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --green-border: #86efac;
+  --green-text: #16a34a;
+  --red-text: #dc2626;
+  --red-bg: #fef2f2;
+  --red-border: #fecaca;
+  --red-deep: #fee2e2;
+  --orange-text: #ea580c;
+  --orange-border: #fed7aa;
+  --orange-bg: #fff7ed;
+  --scrollbar: #d1d5db;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #16171d;
-  color: #f3f4f6;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   width: 100%;
-  max-width: 100%;
   height: 100vh;
 }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+::selection { background: rgba(99, 102, 241, 0.25); }

@@ -32,20 +32,21 @@ def set_reminder(patient_id: str, scheduled_for: str, interaction_type: str) -> 
 
 
 def get_program_summary(patient_id: str) -> dict:
-    """Fetch the patient's assigned home exercise program from MedBridge Go.
+    """Fetch the patient's assigned home exercise program.
 
-    Returns exercises, frequency, and prescribing clinician.
+    Reads from patient state rather than an external service.
     """
+    from ai_health_coach.core.persistence import load_state
+
+    state = load_state(patient_id)
+    if state is None:
+        return {"success": False, "error": "Patient not found"}
+
     return {
         "success": True,
         "program": {
-            "exercises": [
-                {"name": "Quad Sets", "sets": 3, "reps": 10},
-                {"name": "Heel Slides", "sets": 3, "reps": 15},
-                {"name": "Straight Leg Raises", "sets": 2, "reps": 10},
-            ],
-            "frequency": "daily",
-            "assigned_by": "Dr. Smith",
+            "exercises": state["assigned_exercises"],
+            "frequency": "as prescribed by clinician",
         },
     }
 

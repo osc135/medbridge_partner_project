@@ -14,11 +14,9 @@ from pathlib import Path
 
 from ai_health_coach.core.state.schemas import PatientState
 
-DB_PATH = os.environ.get("HEALTH_COACH_DB", "patients.db")
-
-
 def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    db_path = os.environ.get("HEALTH_COACH_DB", "patients.db")
+    conn = sqlite3.connect(db_path)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS patients (
             patient_id TEXT PRIMARY KEY,

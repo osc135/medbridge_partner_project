@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading }) {
+export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme }) {
   const [input, setInput] = useState("");
   const messagesEnd = useRef(null);
 
@@ -11,7 +11,16 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
   if (!patient) {
     return (
       <div className="chat-window empty">
-        <p>Select or create a patient to start coaching.</p>
+        <div className="top-bar">
+          <button className="btn-theme-toggle" onClick={onToggleTheme}>
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
+        </div>
+        <div className="empty-chat-state">
+          <div className="empty-chat-icon">+</div>
+          <p className="empty-chat-title">AI Health Coach</p>
+          <p className="empty-chat-sub">Select a patient or create one to begin</p>
+        </div>
       </div>
     );
   }
@@ -34,6 +43,9 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
           <span className="header-id">{patient.patient_id}</span>
         </div>
         <div className="chat-header-meta">
+          <button className="btn-theme-toggle" onClick={onToggleTheme}>
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
           <span className={`phase-indicator phase-${patient.phase.toLowerCase()}`}>
             {patient.phase}
           </span>
@@ -90,6 +102,16 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
       </div>
 
       <div className="chat-messages">
+        {needsConsent && (
+          <div className="consent-banner">
+            <div className="consent-banner-icon">!</div>
+            <div className="consent-banner-text">
+              {!patient.has_logged_in
+                ? "This patient has not logged in or consented to coaching. Grant consent to begin."
+                : "This patient has revoked consent. Coaching is paused — their progress is preserved and will resume if they re-consent."}
+            </div>
+          </div>
+        )}
         {patient.messages.map((msg, i) => (
           <div key={i} className={`message ${msg.role}`}>
             <div className="message-role">
@@ -107,21 +129,19 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
         <div ref={messagesEnd} />
       </div>
 
-      <form className="chat-input" onSubmit={handleSubmit}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={
-            needsConsent
-              ? "Grant consent to start coaching..."
-              : "Type a message as the patient..."
-          }
-          disabled={loading}
-        />
-        <button type="submit" disabled={loading || !input.trim()}>
-          Send
-        </button>
-      </form>
+      {!needsConsent && (
+        <form className="chat-input" onSubmit={handleSubmit}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message as the patient..."
+            disabled={loading}
+          />
+          <button type="submit" disabled={loading || !input.trim()}>
+            Send
+          </button>
+        </form>
+      )}
     </div>
   );
 }

@@ -8,6 +8,8 @@ const PHASE_COLORS = {
   DORMANT: "#ef4444",
 };
 
+const EMPTY_EXERCISE = { name: "", sets: "", reps: "" };
+
 export default function Sidebar({
   patients,
   selectedId,
@@ -19,19 +21,46 @@ export default function Sidebar({
   const [formData, setFormData] = useState({
     patientId: "",
     name: "",
-    exercises: "",
     noConsent: false,
   });
+  const [exercises, setExercises] = useState([{ ...EMPTY_EXERCISE }]);
+
+  function addExercise() {
+    setExercises([...exercises, { ...EMPTY_EXERCISE }]);
+  }
+
+  function updateExercise(index, field, value) {
+    const updated = exercises.map((ex, i) =>
+      i === index ? { ...ex, [field]: value } : ex
+    );
+    setExercises(updated);
+  }
+
+  function removeExercise(index) {
+    if (exercises.length === 1) return;
+    setExercises(exercises.filter((_, i) => i !== index));
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
+    const parsed = exercises
+      .filter((ex) => ex.name.trim())
+      .map((ex) => ({
+        name: ex.name.trim(),
+        sets: parseInt(ex.sets) || 3,
+        reps: parseInt(ex.reps) || 10,
+      }));
+
+    if (parsed.length === 0) return;
+
     onCreate({
       patientId: formData.patientId,
       name: formData.name,
-      exercises: formData.exercises.split(",").map((s) => s.trim()),
+      exercises: parsed,
       noConsent: formData.noConsent,
     });
-    setFormData({ patientId: "", name: "", exercises: "", noConsent: false });
+    setFormData({ patientId: "", name: "", noConsent: false });
+    setExercises([{ ...EMPTY_EXERCISE }]);
     setShowForm(false);
   }
 
@@ -62,14 +91,54 @@ export default function Sidebar({
             }
             required
           />
-          <input
-            placeholder="Exercises (comma-separated)"
-            value={formData.exercises}
-            onChange={(e) =>
-              setFormData({ ...formData, exercises: e.target.value })
-            }
-            required
-          />
+
+          <div className="exercises-section">
+            <div className="exercises-header">
+              <span className="exercises-label">Exercises</span>
+              <button type="button" className="btn-add-exercise" onClick={addExercise}>
+                + Add
+              </button>
+            </div>
+            {exercises.map((ex, i) => (
+              <div key={i} className="exercise-row">
+                <input
+                  className="exercise-name"
+                  placeholder="Exercise name"
+                  value={ex.name}
+                  onChange={(e) => updateExercise(i, "name", e.target.value)}
+                  required
+                />
+                <input
+                  className="exercise-num"
+                  type="number"
+                  placeholder="Sets"
+                  min="1"
+                  value={ex.sets}
+                  onChange={(e) => updateExercise(i, "sets", e.target.value)}
+                  required
+                />
+                <input
+                  className="exercise-num"
+                  type="number"
+                  placeholder="Reps"
+                  min="1"
+                  value={ex.reps}
+                  onChange={(e) => updateExercise(i, "reps", e.target.value)}
+                  required
+                />
+                {exercises.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn-remove-exercise"
+                    onClick={() => removeExercise(i)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
           <label className="checkbox-label">
             <input
               type="checkbox"
