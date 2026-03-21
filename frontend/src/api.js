@@ -55,3 +55,17 @@ export async function updateConsent(patientId, revoke = false) {
   });
   return res.json();
 }
+
+export async function getSimDate() {
+  const res = await fetch(`${BASE}/simulation/date`);
+  return res.json();
+}
+
+export async function setSimDate(date) {
+  const res = await fetch(`${BASE}/simulation/date`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date }),
+  });
+  return res.json();
+}

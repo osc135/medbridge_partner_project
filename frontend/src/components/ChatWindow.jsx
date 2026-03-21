@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 
-export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme }) {
+export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme, role = "clinician", simDate, onDateChange }) {
   const [input, setInput] = useState("");
   const messagesEnd = useRef(null);
+
+  const isClinician = role === "clinician";
+  const isPatient = role === "patient";
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth" });
@@ -19,7 +22,11 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
         <div className="empty-chat-state">
           <div className="empty-chat-icon">+</div>
           <p className="empty-chat-title">AI Health Coach</p>
-          <p className="empty-chat-sub">Select a patient or create one to begin</p>
+          <p className="empty-chat-sub">
+            {isClinician
+              ? "Select a patient or create one to begin"
+              : "No account found for this email. Ask your clinician to set you up."}
+          </p>
         </div>
       </div>
     );
@@ -40,7 +47,7 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
       <div className="chat-header">
         <div className="chat-header-info">
           <h2>{patient.patient_name}</h2>
-          <span className="header-id">{patient.patient_id}</span>
+          {isClinician && <span className="header-id">{patient.patient_id}</span>}
         </div>
         <div className="chat-header-meta">
           <button className="btn-theme-toggle" onClick={onToggleTheme}>
@@ -65,7 +72,7 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
             onClick={() => onConsent(false)}
             disabled={loading}
           >
-            Grant Consent
+            {isPatient ? "I Consent to Coaching" : "Grant Consent"}
           </button>
         ) : (
           <button
@@ -77,25 +84,51 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
           </button>
         )}
 
-        <div className="trigger-buttons">
-          <span className="trigger-label">Triggers:</span>
-          {["day_2_checkin", "day_5_checkin", "day_7_checkin"].map((type) => (
-            <button
-              key={type}
-              className={`btn-trigger ${!canTrigger(type) ? "completed" : ""}`}
-              onClick={() => onTrigger(type)}
-              disabled={!canTrigger(type) || loading}
-              title={!canTrigger(type) ? "Already sent" : `Fire ${type}`}
-            >
-              {type.replace("_checkin", "").replace("_", " ")}
-              {!canTrigger(type) && " ✓"}
-            </button>
-          ))}
-        </div>
+        {/* Clinician-only: triggers and date picker */}
+        {isClinician && (
+          <>
+            <div className="trigger-buttons">
+              <span className="trigger-label">Triggers:</span>
+              {["day_2_checkin", "day_5_checkin", "day_7_checkin"].map((type) => (
+                <button
+                  key={type}
+                  className={`btn-trigger ${!canTrigger(type) ? "completed" : ""}`}
+                  onClick={() => onTrigger(type)}
+                  disabled={!canTrigger(type) || loading}
+                  title={!canTrigger(type) ? "Already sent" : `Fire ${type}`}
+                >
+                  {type.replace("_checkin", "").replace("_", " ")}
+                  {!canTrigger(type) && " ✓"}
+                </button>
+              ))}
+            </div>
+
+            {simDate && onDateChange && (
+              <div className="sim-date-picker">
+                <span className="trigger-label">Date:</span>
+                <input
+                  type="date"
+                  className="input-sim-date"
+                  value={simDate}
+                  onChange={(e) => onDateChange(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="chat-messages">
-        {needsConsent && (
+        {needsConsent && !isClinician && (
+          <div className="consent-banner">
+            <div className="consent-banner-icon">!</div>
+            <div className="consent-banner-text">
+              Your coaching is currently paused. Click "I Consent to Coaching" above to get started.
+            </div>
+          </div>
+        )}
+        {needsConsent && isClinician && (
           <div className="consent-banner">
             <div className="consent-banner-icon">!</div>
             <div className="consent-banner-text">
@@ -108,7 +141,7 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
         {patient.messages.map((msg, i) => (
           <div key={i} className={`message ${msg.role}`}>
             <div className="message-role">
-              {msg.role === "assistant" ? "Coach" : "Patient"}
+              {msg.role === "assistant" ? "Coach" : (isClinician ? "Patient" : "You")}
             </div>
             <div className="message-content">{msg.content}</div>
           </div>
@@ -122,12 +155,13 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
         <div ref={messagesEnd} />
       </div>
 
-      {!needsConsent && (
+      {/* Only patients can type — clinicians are read-only */}
+      {isPatient && !needsConsent && (
         <form className="chat-input" onSubmit={handleSubmit}>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message as the patient..."
+            placeholder="Type a message..."
             disabled={loading}
           />
           <button type="submit" disabled={loading || !input.trim()}>

@@ -16,6 +16,8 @@ export default function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onLogout,
+  userEmail,
 }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -54,7 +56,7 @@ export default function Sidebar({
     if (parsed.length === 0) return;
 
     onCreate({
-      patientId: formData.patientId,
+      patientId: formData.patientId.trim().toLowerCase(),
       name: formData.name,
       exercises: parsed,
       noConsent: formData.noConsent,
@@ -66,6 +68,10 @@ export default function Sidebar({
 
   return (
     <div className="sidebar">
+      <div className="sidebar-user">
+        <span className="sidebar-user-email">{userEmail}</span>
+        <button className="btn-logout-sm" onClick={onLogout}>Sign Out</button>
+      </div>
       <div className="sidebar-header">
         <h2>Patients</h2>
         <button className="btn-icon" onClick={() => setShowForm(!showForm)}>
@@ -76,10 +82,11 @@ export default function Sidebar({
       {showForm && (
         <form className="new-patient-form" onSubmit={handleSubmit}>
           <input
-            placeholder="Patient ID (e.g. P001)"
+            type="email"
+            placeholder="Patient email (e.g. jane@gmail.com)"
             value={formData.patientId}
             onChange={(e) =>
-              setFormData({ ...formData, patientId: e.target.value })
+              setFormData({ ...formData, patientId: e.target.value.toLowerCase() })
             }
             required
           />

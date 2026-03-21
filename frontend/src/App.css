@@ -1,3 +1,165 @@
+/* ─── Login Page ─────────────────────────────────────────── */
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+.login-card {
+  width: 360px;
+  padding: 40px 32px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  margin: 0 auto 16px;
+}
+
+.login-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.login-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login-form input {
+  padding: 11px 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 10px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.login-form input::placeholder { color: var(--text-ghost); }
+.login-form input:focus { outline: none; border-color: var(--accent); }
+
+.login-btn {
+  padding: 12px;
+  font-size: 13px;
+}
+
+.login-error {
+  font-size: 12px;
+  color: var(--red-text);
+  margin: 0;
+}
+
+.login-hint {
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin: 16px 0 0;
+}
+
+.login-hint strong {
+  color: var(--text-muted);
+}
+
+/* ─── Patient Topbar ─────────────────────────────────────── */
+
+.patient-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.patient-topbar-greeting {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.patient-topbar-greeting strong {
+  color: var(--text-secondary);
+}
+
+.btn-logout {
+  padding: 5px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.btn-logout:hover {
+  border-color: var(--red-border);
+  color: var(--red-text);
+  background: var(--red-bg);
+}
+
+/* ─── Sidebar User ───────────────────────────────────────── */
+
+.sidebar-user {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-user-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-logout-sm {
+  padding: 3px 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-ghost);
+  font-size: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.btn-logout-sm:hover {
+  border-color: var(--red-border);
+  color: var(--red-text);
+  background: var(--red-bg);
+}
+
 /* ─── Layout ─────────────────────────────────────────────── */
 
 .app {
@@ -5,6 +167,10 @@
   height: 100vh;
   overflow: hidden;
   background: var(--bg-primary);
+}
+
+.app:has(.patient-topbar) {
+  flex-direction: column;
 }
 
 /* ─── Sidebar ────────────────────────────────────────────── */
@@ -94,6 +260,7 @@
 }
 
 .new-patient-form input[type="text"],
+.new-patient-form input[type="email"],
 .new-patient-form input[type="number"],
 .new-patient-form input:not([type]) {
   padding: 8px 10px;
@@ -473,8 +640,42 @@
 
 .btn-trigger:disabled { opacity: 0.35; cursor: not-allowed; }
 
-.btn-backoff { border-color: var(--orange-border); color: var(--orange-text); }
-.btn-backoff:hover:not(:disabled) { background: var(--orange-bg); border-color: var(--orange-text); }
+/* ─── Simulation Date Picker ─────────────────────────────── */
+
+.sim-date-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.input-sim-date {
+  padding: 4px 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.input-sim-date:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.input-sim-date::-webkit-calendar-picker-indicator {
+  filter: var(--calendar-icon-filter, none);
+  cursor: pointer;
+}
+
+[data-theme="dark"] .input-sim-date::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
 
 /* ─── Consent Banner ─────────────────────────────────────── */
 
@@ -507,6 +708,57 @@
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
+}
+
+/* ─── Patient Consent Prompt ─────────────────────────────── */
+
+.patient-consent-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  padding: 40px 24px;
+}
+
+.consent-prompt-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  margin-bottom: 18px;
+}
+
+.consent-prompt-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.consent-prompt-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 360px;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.consent-prompt-btn {
+  padding: 12px 32px;
+  font-size: 14px;
+}
+
+.consent-prompt-fine {
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin: 12px 0 0;
 }
 
 /* ─── Messages ───────────────────────────────────────────── */
