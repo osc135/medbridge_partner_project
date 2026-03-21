@@ -77,8 +77,10 @@ def check_and_filter_message(
         SafetyCheckState dict with final_message and metadata.
     """
     classification = classify_message(message)
+    preview = message[:80] + ("..." if len(message) > 80 else "")
 
     if classification == "safe":
+        print(f"  \033[92m  ✓ SAFETY: safe — \"{preview}\"\033[0m")
         return {
             "original_message": message,
             "flagged": False,
@@ -88,6 +90,7 @@ def check_and_filter_message(
         }
 
     if classification == "mental_health_crisis":
+        print(f"  \033[91m  ✗ SAFETY: CRISIS DETECTED — \"{preview}\"\033[0m")
         return {
             "original_message": message,
             "flagged": True,
@@ -97,9 +100,12 @@ def check_and_filter_message(
         }
 
     # Clinical — retry once with augmented prompt, then fallback
+    print(f"  \033[93m  ⚠ SAFETY: clinical content — \"{preview}\"\033[0m")
     if regenerate_fn is not None:
+        print(f"  \033[93m  ↻ SAFETY: retrying with safe prompt...\033[0m")
         retry_message = regenerate_fn()
         if classify_message(retry_message) == "safe":
+            print(f"  \033[92m  ✓ SAFETY: retry passed\033[0m")
             return {
                 "original_message": message,
                 "flagged": True,
@@ -107,6 +113,7 @@ def check_and_filter_message(
                 "retry_count": 1,
                 "final_message": retry_message,
             }
+        print(f"  \033[91m  ✗ SAFETY: retry also flagged — using fallback\033[0m")
 
     return {
         "original_message": message,

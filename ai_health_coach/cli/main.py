@@ -45,8 +45,8 @@ def cmd_new(args: argparse.Namespace) -> None:
         patient_name=name,
         assigned_exercises=exercises,
         program_start_date=start_date,
-        has_logged_in=True,
-        has_consented=True,
+        has_logged_in=not args.no_consent,
+        has_consented=not args.no_consent,
     )
     save_state(state)
 
@@ -159,6 +159,32 @@ def cmd_patients(_args: argparse.Namespace) -> None:
     print()
 
 
+def cmd_consent(args: argparse.Namespace) -> None:
+    """Grant or revoke consent for a patient."""
+    state = load_state(args.patient_id)
+    if state is None:
+        print(f"Patient {args.patient_id} not found.")
+        return
+
+    if args.revoke:
+        state = {**state, "has_consented": False}
+        save_state(state)
+        print(f"Consent revoked for {state['patient_name']}. Phase preserved at {state['phase']}.")
+    else:
+        state = {**state, "has_logged_in": True, "has_consented": True}
+        save_state(state)
+        print(f"Consent granted for {state['patient_name']}. Phase: {state['phase']}.")
+
+        # If still PENDING, kick off onboarding
+        result = route_message(state, patient_message=None)
+        state = result["state"]
+        save_state(state)
+        if result.get("onboarding_state"):
+            save_onboarding_state(args.patient_id, result["onboarding_state"])
+        if result["response"]:
+            print(f"\nCoach: {result['response']}\n")
+
+
 def cmd_reset(args: argparse.Namespace) -> None:
     """Delete a patient's state."""
     if delete_patient(args.patient_id):
@@ -196,6 +222,7 @@ def main() -> None:
         help="Comma-separated exercise list (e.g. 'Quad Sets,Heel Slides')",
     )
     new_parser.add_argument("--start-date", help="Program start date (YYYY-MM-DD, default: today)")
+    new_parser.add_argument("--no-consent", action="store_true", help="Create patient without login/consent (demo consent gate)")
 
     # chat
     chat_parser = subparsers.add_parser("chat", help="Chat with a patient")
@@ -210,6 +237,11 @@ def main() -> None:
         choices=["day_2_checkin", "day_5_checkin", "day_7_checkin", "backoff"],
         help="Trigger type",
     )
+
+    # consent
+    consent_parser = subparsers.add_parser("consent", help="Grant or revoke consent")
+    consent_parser.add_argument("--patient-id", required=True, help="Patient ID")
+    consent_parser.add_argument("--revoke", action="store_true", help="Revoke consent instead of granting")
 
     # patients
     subparsers.add_parser("patients", help="List all patients")
@@ -228,6 +260,7 @@ def main() -> None:
         "new": cmd_new,
         "chat": cmd_chat,
         "trigger": cmd_trigger,
+        "consent": cmd_consent,
         "patients": cmd_patients,
         "reset": cmd_reset,
     }

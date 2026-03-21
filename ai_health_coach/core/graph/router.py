@@ -65,16 +65,19 @@ def evaluate_transitions(state: PatientState) -> PatientState:
 
     # PENDING → ONBOARDING
     if phase == PHASE_PENDING and state["has_logged_in"] and state["has_consented"]:
+        print(f"  \033[95m⇒ PHASE: PENDING → ONBOARDING\033[0m")
         state = {**state, "phase": PHASE_ONBOARDING}
 
     # ONBOARDING → ACTIVE is handled by the onboarding subgraph when it completes
 
     # ACTIVE → RE_ENGAGING
     if phase == PHASE_ACTIVE and state["consecutive_unanswered_count"] >= 1:
+        print(f"  \033[95m⇒ PHASE: ACTIVE → RE_ENGAGING (unanswered: {state['consecutive_unanswered_count']})\033[0m")
         state = {**state, "phase": PHASE_RE_ENGAGING}
 
     # RE_ENGAGING → DORMANT
     if phase == PHASE_RE_ENGAGING and state["consecutive_unanswered_count"] >= 3:
+        print(f"  \033[95m⇒ PHASE: RE_ENGAGING → DORMANT (unanswered: {state['consecutive_unanswered_count']})\033[0m")
         state = {**state, "phase": PHASE_DORMANT}
 
     return state
@@ -104,6 +107,7 @@ def route_message(
     """
     # ─── Consent gate (every interaction) ───
     consent = check_consent(state)
+    print(f"  \033[96m◆ CONSENT GATE: {consent}\033[0m")
     if consent == "never_consented":
         return {
             "response": NEVER_CONSENTED_MESSAGE,
@@ -138,6 +142,7 @@ def route_message(
     # ─── Apply deterministic transitions ───
     state = evaluate_transitions(state)
     phase = state["phase"]
+    print(f"  \033[96m◆ ROUTING: phase={phase}\033[0m")
 
     # ─── DORMANT: patient reaching out ───
     if phase == PHASE_DORMANT and patient_message is not None:

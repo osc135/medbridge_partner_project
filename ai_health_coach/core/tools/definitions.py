@@ -115,14 +115,22 @@ def execute_tool(tool_name: str, tool_args: dict) -> dict:
 
     Handles failures by returning error dicts rather than raising.
     """
+    import json as _json
+
     fn = TOOL_REGISTRY.get(tool_name)
     if fn is None:
+        print(f"  \033[91m✗ TOOL CALL: {tool_name}({tool_args}) → UNKNOWN TOOL\033[0m")
         return {"success": False, "error": f"Unknown tool: {tool_name}"}
+
+    print(f"  \033[94m→ TOOL CALL: {tool_name}({_json.dumps(tool_args, indent=None)})\033[0m")
 
     try:
         result = fn(**tool_args)
         if not result.get("success"):
+            print(f"  \033[91m  ✗ FAILED: {result}\033[0m")
             return {"success": False, "error": f"Tool {tool_name} returned failure", "result": result}
+        print(f"  \033[92m  ✓ RESULT: {_json.dumps(result, indent=None)}\033[0m")
         return result
     except Exception as e:
+        print(f"  \033[91m  ✗ ERROR: {e}\033[0m")
         return {"success": False, "error": f"Tool {tool_name} raised: {e}"}
