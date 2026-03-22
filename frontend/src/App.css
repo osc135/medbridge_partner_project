@@ -619,6 +619,27 @@
 .btn-revoke:hover { border-color: var(--red-border); color: var(--red-text); background: var(--red-bg); }
 .btn-revoke:disabled { opacity: 0.4; cursor: not-allowed; }
 
+.consent-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.consent-status-pending {
+  background: var(--red-bg);
+  color: var(--red-text);
+  border: 1px solid var(--red-border);
+}
+
+.consent-status-granted {
+  background: var(--green-bg);
+  color: var(--green-text);
+  border: 1px solid var(--green-border);
+}
+
 .trigger-buttons {
   display: flex;
   align-items: center;
@@ -663,43 +684,6 @@
 }
 
 .btn-trigger:disabled { opacity: 0.35; cursor: not-allowed; }
-
-/* ─── Simulation Date Picker ─────────────────────────────── */
-
-.sim-date-picker {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: 4px;
-  padding-left: 12px;
-  border-left: 1px solid var(--border);
-}
-
-.input-sim-date {
-  padding: 4px 8px;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-.input-sim-date:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.input-sim-date::-webkit-calendar-picker-indicator {
-  filter: var(--calendar-icon-filter, none);
-  cursor: pointer;
-}
-
-[data-theme="dark"] .input-sim-date::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
-}
 
 /* ─── Consent Banner ─────────────────────────────────────── */
 
@@ -1436,51 +1420,6 @@
 [data-theme="light"] .dash-card-green .dash-card-value { color: #16a34a; }
 [data-theme="light"] .dash-card-orange .dash-card-value { color: #ea580c; }
 [data-theme="light"] .dash-card-red .dash-card-value { color: #dc2626; }
-
-/* ─── Dashboard Filters ──────────────────────────────────── */
-
-.dashboard-filters {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 16px;
-}
-
-.dash-filter {
-  padding: 6px 14px;
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-faint);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.15s;
-}
-
-.dash-filter:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-.dash-filter-active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
-.dash-filter-active:hover {
-  background: var(--accent-hover);
-  color: white;
-}
-
-.dash-filter-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--text-ghost);
-  font-weight: 500;
-}
 
 /* ─── Dashboard Table ────────────────────────────────────── */
 

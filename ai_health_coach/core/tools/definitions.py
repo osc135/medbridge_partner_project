@@ -67,60 +67,16 @@ def get_program_summary(patient_id: str) -> dict:
 def get_adherence_summary(patient_id: str) -> dict:
     """Fetch the patient's exercise adherence data.
 
-    Reads from the exercise_log in state. Returns completion rate and trend.
+    Stubbed implementation — returns realistic sample data.
+    The LLM uses this to adjust check-in tone.
     """
-    from ai_health_coach.core.persistence import load_state
-
-    state = load_state(patient_id)
-    if state is None:
-        return {"success": False, "error": "Patient not found"}
-
-    log = state.get("exercise_log", [])
-
-    if not log:
-        # No data yet — return neutral defaults
-        return {
-            "success": True,
-            "adherence": {
-                "total_days": 0,
-                "completed_days": 0,
-                "completion_rate": 0.0,
-                "trend": "stable",
-            },
-        }
-
-    total = len(log)
-    completed = sum(1 for entry in log if entry.get("completed"))
-    rate = completed / total if total > 0 else 0.0
-
-    # Trend: compare last 3 entries vs previous 3
-    if total >= 6:
-        recent = sum(1 for e in log[-3:] if e.get("completed"))
-        earlier = sum(1 for e in log[-6:-3] if e.get("completed"))
-        if recent > earlier:
-            trend = "improving"
-        elif recent < earlier:
-            trend = "declining"
-        else:
-            trend = "stable"
-    elif total >= 3:
-        recent = sum(1 for e in log[-3:] if e.get("completed"))
-        if recent >= 2:
-            trend = "improving"
-        elif recent == 0:
-            trend = "declining"
-        else:
-            trend = "stable"
-    else:
-        trend = "stable"
-
     return {
         "success": True,
         "adherence": {
-            "total_days": total,
-            "completed_days": completed,
-            "completion_rate": round(rate, 2),
-            "trend": trend,
+            "total_days": 7,
+            "completed_days": 5,
+            "completion_rate": 0.71,
+            "trend": "improving",
         },
     }
 
@@ -132,8 +88,11 @@ def alert_clinician(
 
     alert_type: 'disengagement' | 'mental_health_crisis'
     urgency: 'routine' | 'urgent'
+
+    Returns the alert dict so callers can merge it into state.
+    The alert is NOT written to the DB here — the caller is responsible
+    for persisting it alongside other state updates to avoid overwrites.
     """
-    from ai_health_coach.core.persistence import load_state, save_state
     from ai_health_coach.core.simulation import get_current_date
 
     alert_id = f"alert_{patient_id}_{alert_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -147,14 +106,10 @@ def alert_clinician(
         "acknowledged": False,
     }
 
-    state = load_state(patient_id)
-    if state is not None:
-        state = {**state, "alerts": state.get("alerts", []) + [alert]}
-        save_state(state)
-
     return {
         "success": True,
         "alert_id": alert_id,
+        "alert": alert,
     }
 
 

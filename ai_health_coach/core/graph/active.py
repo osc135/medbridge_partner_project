@@ -1,6 +1,6 @@
 """Active subgraph — scheduled check-ins and patient interactions.
 
-Handles Day 2, 5, 7 check-ins with tone adjusted by adherence data.
+Handles Day 2, 5, 7 check-ins with tone adjusted by check-in type.
 """
 
 from __future__ import annotations
@@ -10,41 +10,9 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai_health_coach.core.llm import safe_generate, tool_calling_generate
-from ai_health_coach.core.simulation import get_current_date
 from ai_health_coach.core.state.schemas import ActiveState, PatientState
-from ai_health_coach.core.tools.definitions import execute_tool, get_tools_for_phase
+from ai_health_coach.core.tools.definitions import get_tools_for_phase
 
-
-POSITIVE_INDICATORS = [
-    "did", "done", "finished", "completed", "yes", "yeah", "yep",
-    "crushed it", "nailed it", "got it done", "all done", "did them",
-    "did my", "worked out", "exercised", "kept up",
-]
-
-NEGATIVE_INDICATORS = [
-    "didn't", "did not", "skipped", "missed", "no", "nope", "not today",
-    "couldn't", "could not", "forgot", "don't want", "too tired",
-    "not feeling", "can't", "haven't",
-]
-
-
-def _detect_adherence(message: str) -> bool | None:
-    """Detect if patient did their exercises from their message.
-
-    Returns True (did them), False (didn't), or None (unclear).
-    """
-    msg_lower = message.lower()
-
-    # Check negatives first — they take priority since "didn't" contains "did"
-    has_negative = any(ind in msg_lower for ind in NEGATIVE_INDICATORS)
-    if has_negative:
-        return False
-
-    has_positive = any(ind in msg_lower for ind in POSITIVE_INDICATORS)
-    if has_positive:
-        return True
-
-    return None
 
 CHECKIN_DESCRIPTIONS = {
     "day_2_checkin": "This is Day 2 — the patient's first check-in. They just started. Ask how their first couple days have gone. Are they settling into the routine?",
@@ -52,24 +20,26 @@ CHECKIN_DESCRIPTIONS = {
     "day_7_checkin": "This is Day 7 — one week milestone! Celebrate that they've completed a full week. Reflect on how far they've come since setting their goal.",
 }
 
+# Tone is driven by check-in type, not adherence data
+CHECKIN_TONES = {
+    "day_2_checkin": "checkin",
+    "day_5_checkin": "encouragement",
+    "day_7_checkin": "celebration",
+}
+
 CHECKIN_PROMPT = """You are a supportive health coach sending a scheduled check-in to a patient.
 
 Patient name: {patient_name}
-Patient ID: {patient_id}
 Patient goal: {goal_type} {frequency} in the {time_of_day}
 Assigned exercises: {exercises}
+Tone: {tone}
 
 {checkin_context}
 
 IMPORTANT:
-- First, call get_adherence_summary with patient_id='{patient_id}' to check how the patient is doing.
-- Use the adherence data to pick the right tone:
-  - 80%+ completion → celebration
-  - 50%+ and improving → encouragement
-  - 50%+ and stable → regular check-in
-  - Below 50% → nudge (be direct, remind them of their commitment)
 - This is a NEW check-in message. Do NOT repeat or rephrase anything you've already said.
 - Reference their specific goal naturally
+- Match the tone specified above
 - Ask them a specific question about how it's going
 - Do not give clinical advice
 - Keep it to 2-3 sentences
@@ -80,7 +50,6 @@ is to help the patient follow through on the commitment they made.
 
 Patient name: {patient_name}
 Patient goal: {goal_type} {frequency} in the {time_of_day}
-Tone: {tone}
 
 Rules:
 - If the patient says they don't want to exercise or are skipping, DO NOT validate skipping. \
@@ -93,32 +62,6 @@ goal THEY chose.
 - Do not give clinical advice.
 - Keep responses concise (2-3 sentences).
 """
-
-
-def determine_tone(patient_id: str, adherence_result: dict | None = None) -> str:
-    """Determine the check-in tone from adherence data.
-
-    Pass adherence_result to avoid a redundant tool call when the caller
-    already has the data.
-    """
-    if adherence_result is None:
-        adherence_result = execute_tool("get_adherence_summary", {"patient_id": patient_id})
-
-    if not adherence_result.get("success"):
-        return "checkin"  # Default tone on failure
-
-    adherence = adherence_result["adherence"]
-    rate = adherence["completion_rate"]
-    trend = adherence["trend"]
-
-    if rate >= 0.8:
-        return "celebration"
-    elif rate >= 0.5 and trend == "improving":
-        return "encouragement"
-    elif rate >= 0.5:
-        return "checkin"
-    else:
-        return "nudge"
 
 
 def run_checkin(
@@ -142,29 +85,20 @@ def run_checkin(
         checkin_type,
         f"This is a {checkin_type} check-in. Ask how things are going."
     )
+    tone = CHECKIN_TONES.get(checkin_type, "checkin")
 
     prompt = CHECKIN_PROMPT.format(
         patient_name=parent_state["patient_name"],
-        patient_id=parent_state["patient_id"],
         goal_type=goal.get("goal_type", "exercise"),
         frequency=goal.get("frequency", "regularly"),
         time_of_day=goal.get("time_of_day", "your preferred time"),
         exercises=exercises,
         checkin_context=checkin_context,
+        tone=tone,
     )
 
     messages = [SystemMessage(content=prompt)]
-
-    tools = get_tools_for_phase("ACTIVE")
-    result = tool_calling_generate(messages, tools)
-    response = result["message"]
-
-    # Extract adherence data from tool calls if the LLM fetched it
-    adherence_result = None
-    for tc in result["tool_calls_made"]:
-        if tc["name"] == "get_adherence_summary" and tc["result"].get("success"):
-            adherence_result = tc["result"]
-    tone = determine_tone(parent_state["patient_id"], adherence_result=adherence_result)
+    response = safe_generate(messages)
 
     active_state = ActiveState(
         current_checkin=checkin_type,
@@ -174,17 +108,9 @@ def run_checkin(
     # Outbound check-in with no patient reply — count as unanswered
     unanswered = parent_state["consecutive_unanswered_count"] + 1
 
-    # Log as missed since this is an outbound check-in (patient hasn't responded yet)
-    log_entry = {
-        "date": get_current_date(),
-        "completed": False,
-        "source": f"unanswered_{checkin_type}",
-    }
-
     parent_updates = {
         "completed_checkins": parent_state["completed_checkins"] + [checkin_type],
         "consecutive_unanswered_count": unanswered,
-        "exercise_log": parent_state.get("exercise_log", []) + [log_entry],
     }
 
     return {
@@ -205,7 +131,6 @@ def run_active_response(
         - active_state: ActiveState
         - parent_updates: dict
     """
-    tone = determine_tone(parent_state["patient_id"])
     goal = parent_state.get("goal") or {}
 
     prompt = RESPONSE_PROMPT.format(
@@ -213,7 +138,6 @@ def run_active_response(
         goal_type=goal.get("goal_type", "exercise"),
         frequency=goal.get("frequency", "regularly"),
         time_of_day=goal.get("time_of_day", "your preferred time"),
-        tone=tone,
     )
 
     messages = [SystemMessage(content=prompt)]
@@ -228,7 +152,7 @@ def run_active_response(
 
     active_state = ActiveState(
         current_checkin=parent_state["completed_checkins"][-1] if parent_state["completed_checkins"] else "day_2",
-        interaction_tone=tone,
+        interaction_tone="checkin",
     )
 
     # Patient responded — reset unanswered count
@@ -236,17 +160,6 @@ def run_active_response(
         "consecutive_unanswered_count": 0,
         "current_backoff_step": 0,
     }
-
-    # Log adherence based on what the patient said
-    adherence = _detect_adherence(patient_message)
-    if adherence is not None:
-        log_entry = {
-            "date": get_current_date(),
-            "completed": adherence,
-            "source": "patient_response",
-        }
-        parent_updates["exercise_log"] = parent_state.get("exercise_log", []) + [log_entry]
-        print(f"  \033[{'92' if adherence else '93'}m  📋 ADHERENCE: {'completed' if adherence else 'skipped'}\033[0m")
 
     return {
         "response": response,

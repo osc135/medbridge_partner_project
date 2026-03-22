@@ -75,23 +75,27 @@ def run_nudge(
 
     messages = [SystemMessage(content=nudge_instructions)]
 
+    alert_to_store = None
+
     if hitting_dormant:
         tools = get_tools_for_phase("RE_ENGAGING")
         result = tool_calling_generate(messages, tools)
         response = result["message"]
 
+        # Collect alert from LLM tool calls
+        for tc in result["tool_calls_made"]:
+            if tc["name"] == "alert_clinician" and tc["result"].get("success"):
+                alert_to_store = tc["result"].get("alert")
+
         # Verify alert was sent — fall back if LLM didn't call it
-        alert_sent = any(
-            tc["name"] == "alert_clinician" and tc["result"].get("success")
-            for tc in result["tool_calls_made"]
-        )
-        if not alert_sent:
-            execute_tool("alert_clinician", {
+        if alert_to_store is None:
+            fallback = execute_tool("alert_clinician", {
                 "patient_id": parent_state["patient_id"],
                 "alert_type": "disengagement",
                 "urgency": "routine",
                 "context": f"Patient has not responded to {unanswered} consecutive messages.",
             })
+            alert_to_store = fallback.get("alert")
     else:
         response = safe_generate(messages)
 
@@ -106,6 +110,11 @@ def run_nudge(
     if unanswered >= 3:
         parent_updates["phase"] = PHASE_DORMANT
         parent_updates["clinician_alerted"] = True
+
+    # Merge alert into parent state
+    if alert_to_store:
+        existing_alerts = parent_state.get("alerts", [])
+        parent_updates["alerts"] = existing_alerts + [alert_to_store]
 
     return {
         "response": response,

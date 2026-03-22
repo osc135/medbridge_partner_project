@@ -11,8 +11,6 @@ import {
   sendMessage,
   triggerCheckin,
   updateConsent,
-  getSimDate,
-  setSimDate,
   fetchAllAlerts,
   acknowledgeAlert,
 } from "./api";
@@ -30,7 +28,6 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [simDate, setSimDateState] = useState("");
   const [allAlerts, setAllAlerts] = useState([]);
   const [dashboardData, setDashboardData] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
@@ -96,7 +93,6 @@ export default function App() {
     if (user) {
       loadPatients();
       if (user.role === "clinician") {
-        getSimDate().then((d) => setSimDateState(d.date));
         loadAlerts();
         loadDashboard();
       }
@@ -163,18 +159,6 @@ export default function App() {
       await triggerCheckin(selectedId, type);
       await loadPatient(selectedId);
       await reloadAll();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleDateChange(date) {
-    setLoading(true);
-    try {
-      await setSimDate(date);
-      setSimDateState(date);
-      await reloadAll();
-      if (selectedId) await loadPatient(selectedId);
     } finally {
       setLoading(false);
     }
@@ -272,8 +256,6 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           role="clinician"
-          simDate={simDate}
-          onDateChange={handleDateChange}
           onAcknowledgeAlert={handleAcknowledgeAlert}
           onBack={handleBackToDashboard}
         />

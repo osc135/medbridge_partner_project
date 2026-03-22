@@ -66,6 +66,12 @@ def _stamp_contact(patient_state: dict) -> dict:
     return {**patient_state, "last_contact_date": get_current_date()}
 
 
+def _append_alert(patient_state: dict, alert: dict) -> dict:
+    """Append an alert to patient state's alerts list."""
+    alerts = patient_state.get("alerts", []) + [alert]
+    return {**patient_state, "alerts": alerts}
+
+
 # ─── Node functions ────────────────────────────────────────────────
 # Each takes GraphState and returns a partial GraphState update dict.
 
@@ -122,7 +128,7 @@ def crisis_response_node(state: GraphState) -> dict:
     ps = state["patient_state"]
     patient_message = state["patient_message"]
 
-    execute_tool("alert_clinician", {
+    result = execute_tool("alert_clinician", {
         "patient_id": ps["patient_id"],
         "alert_type": "mental_health_crisis",
         "urgency": "urgent",
@@ -131,6 +137,8 @@ def crisis_response_node(state: GraphState) -> dict:
 
     updated = _append_messages(ps, patient_message, CRISIS_MESSAGE)
     updated = _stamp_contact(updated)
+    if result.get("alert"):
+        updated = _append_alert(updated, result["alert"])
 
     return {
         "response": CRISIS_MESSAGE,

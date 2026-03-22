@@ -26,7 +26,7 @@ def test_create_initial_state_defaults():
     assert state["completed_checkins"] == []
     assert state["messages"] == []
     assert state["failed_alerts"] == []
-    assert state["exercise_log"] == []
+    assert state["alerts"] == []
     assert state["reminders"] == []
 
 

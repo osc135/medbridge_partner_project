@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme, role = "clinician", simDate, onDateChange, onAcknowledgeAlert, onBack }) {
+export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme, role = "clinician", onAcknowledgeAlert, onBack }) {
   const [input, setInput] = useState("");
   const messagesEnd = useRef(null);
 
@@ -58,28 +58,34 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
           <button className="btn-theme-toggle" onClick={onToggleTheme}>
             {theme === "dark" ? "☀" : "☾"}
           </button>
-          <span className={`phase-indicator phase-${patient.phase.toLowerCase()}`}>
-            {patient.phase}
-          </span>
-          {patient.goal && (
-            <span className="goal-badge">
-              Goal: {patient.goal.goal_type} {patient.goal.frequency}{" "}
-              {patient.goal.time_of_day && `in the ${patient.goal.time_of_day}`}
-            </span>
+          {isClinician && (
+            <>
+              <span className={`phase-indicator phase-${patient.phase.toLowerCase()}`}>
+                {patient.phase}
+              </span>
+              {patient.goal && (
+                <span className="goal-badge">
+                  Goal: {patient.goal.goal_type} {patient.goal.frequency}{" "}
+                  {patient.goal.time_of_day && `in the ${patient.goal.time_of_day}`}
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
 
       <div className="chat-toolbar">
-        {needsConsent ? (
+        {/* Consent controls — patient only */}
+        {isPatient && needsConsent && (
           <button
             className="btn-consent"
             onClick={() => onConsent(false)}
             disabled={loading}
           >
-            {isPatient ? "I Consent to Coaching" : "Grant Consent"}
+            I Consent to Coaching
           </button>
-        ) : (
+        )}
+        {isPatient && !needsConsent && (
           <button
             className="btn-revoke"
             onClick={() => onConsent(true)}
@@ -87,6 +93,13 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
           >
             Revoke Consent
           </button>
+        )}
+        {/* Clinician sees status only */}
+        {isClinician && needsConsent && (
+          <span className="consent-status consent-status-pending">No Consent</span>
+        )}
+        {isClinician && !needsConsent && (
+          <span className="consent-status consent-status-granted">Consented</span>
         )}
 
         {/* Clinician-only: triggers and date picker */}
@@ -108,18 +121,6 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
               ))}
             </div>
 
-            {simDate && onDateChange && (
-              <div className="sim-date-picker">
-                <span className="trigger-label">Date:</span>
-                <input
-                  type="date"
-                  className="input-sim-date"
-                  value={simDate}
-                  onChange={(e) => onDateChange(e.target.value)}
-                  disabled={loading}
-                />
-              </div>
-            )}
           </>
         )}
       </div>
@@ -162,7 +163,7 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
             <div className="consent-banner-icon">!</div>
             <div className="consent-banner-text">
               {!patient.has_logged_in
-                ? "This patient has not logged in or consented to coaching. Grant consent to begin."
+                ? "This patient has not logged in or consented to coaching yet. Coaching will begin once they log in and consent."
                 : "This patient has revoked consent. Coaching is paused — their progress is preserved and will resume if they re-consent."}
             </div>
           </div>

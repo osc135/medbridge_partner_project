@@ -1,13 +1,5 @@
 import { useState } from "react";
 
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "at_risk", label: "At Risk" },
-  { key: "dormant", label: "Dormant" },
-  { key: "has_alerts", label: "Has Alerts" },
-];
-
 const PHASE_CLASSES = {
   PENDING: "phase-pending",
   ONBOARDING: "phase-onboarding",
@@ -29,16 +21,14 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
   // Summary counts
   const total = data.length;
   const active = data.filter((p) => p.phase === "ACTIVE").length;
-  const atRisk = data.filter(
-    (p) => p.phase === "RE_ENGAGING" || p.consecutive_unanswered_count >= 1
-  ).length;
+  const atRisk = data.filter((p) => p.phase === "RE_ENGAGING").length;
   const dormant = data.filter((p) => p.phase === "DORMANT").length;
   const alertCount = data.reduce((sum, p) => sum + (p.active_alerts?.length || 0), 0);
 
   // Filter
   const filtered = data.filter((p) => {
     if (filter === "active") return p.phase === "ACTIVE";
-    if (filter === "at_risk") return p.phase === "RE_ENGAGING" || p.consecutive_unanswered_count >= 1;
+    if (filter === "at_risk") return p.phase === "RE_ENGAGING";
     if (filter === "dormant") return p.phase === "DORMANT";
     if (filter === "has_alerts") return (p.active_alerts?.length || 0) > 0;
     return true;
@@ -240,20 +230,6 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="dashboard-filters">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            className={`dash-filter ${filter === f.key ? "dash-filter-active" : ""}`}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
-        <span className="dash-filter-count">{filtered.length} patient{filtered.length !== 1 ? "s" : ""}</span>
-      </div>
-
       {/* Patient Table */}
       <div className="dashboard-table-wrap">
         <table className="dashboard-table">
@@ -262,7 +238,6 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
               <th onClick={() => handleSort("patient_name")}>Name{sortIndicator("patient_name")}</th>
               <th onClick={() => handleSort("phase")}>Phase{sortIndicator("phase")}</th>
               <th onClick={() => handleSort("goal_summary")}>Goal{sortIndicator("goal_summary")}</th>
-              <th onClick={() => handleSort("adherence_rate")}>Adherence{sortIndicator("adherence_rate")}</th>
               <th onClick={() => handleSort("last_contact_date")}>Last Contact{sortIndicator("last_contact_date")}</th>
               <th onClick={() => handleSort("consecutive_unanswered_count")}>Unanswered{sortIndicator("consecutive_unanswered_count")}</th>
               <th onClick={() => handleSort("active_alerts")}>Alerts{sortIndicator("active_alerts")}</th>
@@ -288,16 +263,7 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
                   </span>
                 </td>
                 <td>
-                  <span className="dash-cell-goal">{p.goal_summary || "\u2014"}</span>
-                </td>
-                <td>
-                  {p.adherence_rate != null ? (
-                    <span className={`dash-adherence ${p.adherence_rate >= 0.7 ? "good" : p.adherence_rate >= 0.4 ? "mid" : "low"}`}>
-                      {Math.round(p.adherence_rate * 100)}%
-                    </span>
-                  ) : (
-                    <span className="dash-cell-na">\u2014</span>
-                  )}
+                  <span className="dash-cell-goal">{p.goal_summary || "—"}</span>
                 </td>
                 <td>
                   <span className="dash-cell-date">{p.last_contact_date || "Never"}</span>
@@ -328,7 +294,7 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
                       ))}
                     </div>
                   ) : (
-                    <span className="dash-cell-zero">\u2014</span>
+                    <span className="dash-cell-zero">—</span>
                   )}
                 </td>
                 <td>
@@ -347,7 +313,7 @@ export default function Dashboard({ data, onSelectPatient, onAcknowledgeAlert, o
             ))}
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={8} className="dash-empty">No patients match this filter.</td>
+                <td colSpan={7} className="dash-empty">No patients match this filter.</td>
               </tr>
             )}
           </tbody>
