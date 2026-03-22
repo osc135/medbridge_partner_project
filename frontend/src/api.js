@@ -5,6 +5,11 @@ export async function fetchPatients() {
   return res.json();
 }
 
+export async function fetchDashboard() {
+  const res = await fetch(`${BASE}/dashboard`);
+  return res.json();
+}
+
 export async function fetchPatient(patientId) {
   const res = await fetch(`${BASE}/patients/${patientId}`);
   if (!res.ok) throw new Error("Patient not found");
@@ -53,6 +58,19 @@ export async function updateConsent(patientId, revoke = false) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ revoke }),
   });
+  return res.json();
+}
+
+export async function fetchAllAlerts() {
+  const res = await fetch(`${BASE}/alerts`);
+  return res.json();
+}
+
+export async function acknowledgeAlert(patientId, alertId) {
+  const res = await fetch(
+    `${BASE}/patients/${patientId}/alerts/${alertId}/acknowledge`,
+    { method: "POST" }
+  );
   return res.json();
 }
 

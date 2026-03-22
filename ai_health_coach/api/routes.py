@@ -71,6 +71,7 @@ class PatientResponse(BaseModel):
     completed_checkins: list[str]
     assigned_exercises: list[dict]
     exercise_log: list[dict]
+    alerts: list[dict]
 
 
 class ChatResponse(BaseModel):
@@ -84,6 +85,55 @@ class ChatResponse(BaseModel):
 @app.get("/api/patients")
 def get_patients():
     return list_patients()
+
+
+@app.get("/api/dashboard")
+def get_dashboard():
+    """Return enriched patient data for the clinician dashboard."""
+    patients = list_patients()
+    rows = []
+    for p in patients:
+        state = load_state(p["patient_id"])
+        if state is None:
+            continue
+
+        # Compute adherence rate
+        log = state.get("exercise_log", [])
+        total = len(log)
+        completed = sum(1 for e in log if e.get("completed"))
+        adherence_rate = round(completed / total, 2) if total > 0 else None
+
+        # Count unacknowledged alerts
+        alerts = state.get("alerts", [])
+        active_alerts = [a for a in alerts if not a.get("acknowledged")]
+
+        goal = state.get("goal")
+        goal_summary = None
+        if goal:
+            parts = []
+            if goal.get("goal_type"):
+                parts.append(goal["goal_type"])
+            if goal.get("frequency"):
+                parts.append(goal["frequency"])
+            if goal.get("time_of_day"):
+                parts.append(f"in the {goal['time_of_day']}")
+            goal_summary = " ".join(parts) if parts else None
+
+        rows.append({
+            "patient_id": state["patient_id"],
+            "patient_name": state["patient_name"],
+            "phase": state["phase"],
+            "goal_summary": goal_summary,
+            "adherence_rate": adherence_rate,
+            "last_contact_date": state.get("last_contact_date"),
+            "consecutive_unanswered_count": state["consecutive_unanswered_count"],
+            "active_alerts": active_alerts,
+            "has_consented": state["has_consented"],
+            "has_logged_in": state["has_logged_in"],
+            "program_start_date": state["program_start_date"],
+        })
+
+    return rows
 
 
 @app.get("/api/patients/{patient_id}")
@@ -103,6 +153,7 @@ def get_patient(patient_id: str):
         completed_checkins=state["completed_checkins"],
         assigned_exercises=state["assigned_exercises"],
         exercise_log=state.get("exercise_log", []),
+        alerts=state.get("alerts", []),
     )
 
 
@@ -204,6 +255,49 @@ def update_consent(patient_id: str, req: ConsentRequest):
             save_onboarding_state(patient_id, result["onboarding_state"])
 
         return ChatResponse(response=result["response"], phase=state["phase"])
+
+
+# ─── Alerts ───────────────────────────────────────────────────────
+
+
+@app.get("/api/alerts")
+def get_all_alerts():
+    """Get all unacknowledged alerts across all patients."""
+    patients = list_patients()
+    alerts = []
+    for p in patients:
+        state = load_state(p["patient_id"])
+        if state is None:
+            continue
+        for alert in state.get("alerts", []):
+            if not alert.get("acknowledged"):
+                alerts.append({**alert, "patient_id": p["patient_id"], "patient_name": p["patient_name"]})
+    # Sort: urgent first, then by timestamp descending
+    alerts.sort(key=lambda a: (0 if a["urgency"] == "urgent" else 1, a.get("timestamp", "")), reverse=False)
+    return alerts
+
+
+@app.post("/api/patients/{patient_id}/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(patient_id: str, alert_id: str):
+    state = load_state(patient_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    updated_alerts = []
+    found = False
+    for alert in state.get("alerts", []):
+        if alert["id"] == alert_id:
+            updated_alerts.append({**alert, "acknowledged": True})
+            found = True
+        else:
+            updated_alerts.append(alert)
+
+    if not found:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    state = {**state, "alerts": updated_alerts}
+    save_state(state)
+    return {"acknowledged": True}
 
 
 # ─── Simulation Clock ─────────────────────────────────────────────

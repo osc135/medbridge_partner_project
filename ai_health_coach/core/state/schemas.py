@@ -38,6 +38,10 @@ class PatientState(TypedDict):
     # Adherence tracking — each: {"date": str, "completed": bool, "source": str}
     exercise_log: list[dict]
 
+    # Clinician alerts — each: {"id": str, "alert_type": str, "urgency": str,
+    #   "context": str, "timestamp": str, "acknowledged": bool}
+    alerts: list[dict]
+
     # Conversation history
     messages: list[dict]
 
@@ -156,5 +160,6 @@ def create_initial_state(
         clinician_alerted=False,
         failed_alerts=[],
         exercise_log=[],
+        alerts=[],
         messages=[],
     )

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme, role = "clinician", simDate, onDateChange }) {
+export default function ChatWindow({ patient, onSend, onTrigger, onConsent, loading, theme, onToggleTheme, role = "clinician", simDate, onDateChange, onAcknowledgeAlert, onBack }) {
   const [input, setInput] = useState("");
   const messagesEnd = useRef(null);
 
@@ -46,6 +46,11 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
     <div className="chat-window">
       <div className="chat-header">
         <div className="chat-header-info">
+          {onBack && (
+            <button className="btn-back-chat" onClick={onBack} title="Back to Dashboard">
+              ←
+            </button>
+          )}
           <h2>{patient.patient_name}</h2>
           {isClinician && <span className="header-id">{patient.patient_id}</span>}
         </div>
@@ -120,6 +125,30 @@ export default function ChatWindow({ patient, onSend, onTrigger, onConsent, load
       </div>
 
       <div className="chat-messages">
+        {/* Alert banners for clinician */}
+        {isClinician && patient.alerts && patient.alerts.filter(a => !a.acknowledged).map((alert) => (
+          <div key={alert.id} className={`alert-banner alert-banner-${alert.urgency}`}>
+            <div className={`alert-banner-icon ${alert.urgency === "urgent" ? "alert-banner-icon-urgent" : "alert-banner-icon-routine"}`}>
+              {alert.urgency === "urgent" ? "!" : "?"}
+            </div>
+            <div className="alert-banner-body">
+              <div className="alert-banner-top">
+                <span className="alert-banner-label">
+                  {alert.alert_type === "mental_health_crisis" ? "Crisis Alert" : "Disengagement Alert"}
+                </span>
+                <span className="alert-banner-time">{alert.timestamp}</span>
+              </div>
+              <div className="alert-banner-context">{alert.context}</div>
+            </div>
+            <button
+              className="btn-acknowledge"
+              onClick={() => onAcknowledgeAlert(patient.patient_id, alert.id)}
+            >
+              Acknowledge
+            </button>
+          </div>
+        ))}
+
         {needsConsent && !isClinician && (
           <div className="consent-banner">
             <div className="consent-banner-icon">!</div>

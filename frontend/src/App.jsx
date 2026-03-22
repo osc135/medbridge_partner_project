@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import LoginPage from "./components/LoginPage";
-import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
+import Dashboard from "./components/Dashboard";
 import {
   fetchPatients,
   fetchPatient,
+  fetchDashboard,
   createPatient,
   deletePatient,
   sendMessage,
@@ -12,6 +13,8 @@ import {
   updateConsent,
   getSimDate,
   setSimDate,
+  fetchAllAlerts,
+  acknowledgeAlert,
 } from "./api";
 import "./App.css";
 
@@ -28,6 +31,8 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loading, setLoading] = useState(false);
   const [simDate, setSimDateState] = useState("");
+  const [allAlerts, setAllAlerts] = useState([]);
+  const [dashboardData, setDashboardData] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
 
   useEffect(() => {
@@ -60,6 +65,24 @@ export default function App() {
     setPatients(data);
   }, []);
 
+  const loadAlerts = useCallback(async () => {
+    try {
+      const data = await fetchAllAlerts();
+      setAllAlerts(data);
+    } catch {
+      setAllAlerts([]);
+    }
+  }, []);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const data = await fetchDashboard();
+      setDashboardData(data);
+    } catch {
+      setDashboardData([]);
+    }
+  }, []);
+
   const loadPatient = useCallback(async (id) => {
     try {
       const data = await fetchPatient(id);
@@ -74,9 +97,11 @@ export default function App() {
       loadPatients();
       if (user.role === "clinician") {
         getSimDate().then((d) => setSimDateState(d.date));
+        loadAlerts();
+        loadDashboard();
       }
     }
-  }, [user, loadPatients]);
+  }, [user, loadPatients, loadAlerts]);
 
   useEffect(() => {
     if (selectedId) loadPatient(selectedId);
@@ -91,11 +116,17 @@ export default function App() {
     return () => clearInterval(interval);
   }, [user, selectedId, loadPatient, loading]);
 
+  async function reloadAll() {
+    await loadPatients();
+    await loadAlerts();
+    await loadDashboard();
+  }
+
   async function handleCreate(formData) {
     setLoading(true);
     try {
       await createPatient(formData);
-      await loadPatients();
+      await reloadAll();
       setSelectedId(formData.patientId);
     } finally {
       setLoading(false);
@@ -108,7 +139,7 @@ export default function App() {
       setSelectedId(null);
       setSelectedPatient(null);
     }
-    await loadPatients();
+    await reloadAll();
   }
 
   async function handleSend(message) {
@@ -120,7 +151,7 @@ export default function App() {
     try {
       await sendMessage(selectedId, message);
       await loadPatient(selectedId);
-      await loadPatients();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
@@ -131,7 +162,7 @@ export default function App() {
     try {
       await triggerCheckin(selectedId, type);
       await loadPatient(selectedId);
-      await loadPatients();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
@@ -142,12 +173,18 @@ export default function App() {
     try {
       await setSimDate(date);
       setSimDateState(date);
-      // Reload everything — reminders may have fired
-      await loadPatients();
+      await reloadAll();
       if (selectedId) await loadPatient(selectedId);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleAcknowledgeAlert(patientId, alertId) {
+    await acknowledgeAlert(patientId, alertId);
+    await loadAlerts();
+    await loadDashboard();
+    if (selectedId) await loadPatient(selectedId);
   }
 
   async function handleConsent(revoke) {
@@ -155,10 +192,20 @@ export default function App() {
     try {
       await updateConsent(selectedId, revoke);
       await loadPatient(selectedId);
-      await loadPatients();
+      await reloadAll();
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleDashboardSelectPatient(patientId) {
+    setSelectedId(patientId);
+  }
+
+  function handleBackToDashboard() {
+    setSelectedId(null);
+    setSelectedPatient(null);
+    reloadAll();
   }
 
   // Not logged in — show login page
@@ -194,30 +241,53 @@ export default function App() {
     );
   }
 
-  // Clinician view — full dashboard
+  // Clinician view — Dashboard or Patient Chat
+  const showingChat = selectedId && selectedPatient;
+
   return (
-    <div className="app">
-      <Sidebar
-        patients={patients}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onCreate={handleCreate}
-        onDelete={handleDelete}
-        onLogout={handleLogout}
-        userEmail={user.email}
-      />
-      <ChatWindow
-        patient={selectedPatient}
-        onSend={handleSend}
-        onTrigger={handleTrigger}
-        onConsent={handleConsent}
-        loading={loading}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        role="clinician"
-        simDate={simDate}
-        onDateChange={handleDateChange}
-      />
+    <div className="app app-clinician">
+      <div className="clinician-topbar">
+        <div className="clinician-topbar-left">
+          {showingChat && (
+            <button className="btn-back" onClick={handleBackToDashboard}>
+              ← Dashboard
+            </button>
+          )}
+          {!showingChat && (
+            <span className="clinician-topbar-title">AI Health Coach</span>
+          )}
+        </div>
+        <div className="clinician-topbar-right">
+          <span className="clinician-topbar-email">{user.email}</span>
+          <button className="btn-logout" onClick={handleLogout}>Sign Out</button>
+        </div>
+      </div>
+      {showingChat ? (
+        <ChatWindow
+          patient={selectedPatient}
+          onSend={handleSend}
+          onTrigger={handleTrigger}
+          onConsent={handleConsent}
+          loading={loading}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          role="clinician"
+          simDate={simDate}
+          onDateChange={handleDateChange}
+          onAcknowledgeAlert={handleAcknowledgeAlert}
+          onBack={handleBackToDashboard}
+        />
+      ) : (
+        <Dashboard
+          data={dashboardData}
+          onSelectPatient={handleDashboardSelectPatient}
+          onAcknowledgeAlert={handleAcknowledgeAlert}
+          onCreatePatient={handleCreate}
+          onDeletePatient={handleDelete}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+      )}
     </div>
   );
 }

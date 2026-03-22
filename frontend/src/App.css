@@ -455,6 +455,8 @@
   display: flex;
   flex-direction: column;
   background: var(--bg-primary);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-window.empty {
@@ -501,8 +503,30 @@
 
 .chat-header-info {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+}
+
+.btn-back-chat {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.btn-back-chat:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 
 .chat-header h2 {
@@ -847,3 +871,804 @@
 .chat-input button:hover:not(:disabled) { background: var(--accent-hover); }
 .chat-input button:active:not(:disabled) { transform: scale(0.97); }
 .chat-input button:disabled { opacity: 0.25; cursor: not-allowed; }
+
+/* ─── Alerts Panel (Sidebar) ─────────────────────────────── */
+
+.alerts-panel {
+  border-bottom: 1px solid var(--border);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.alerts-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px 6px;
+}
+
+.alerts-panel-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--red-text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.alerts-panel-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--red-deep);
+  color: var(--red-text);
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.alerts-panel-list {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.alert-item:hover { background: var(--bg-hover); }
+
+.alert-item.alert-urgent {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+}
+
+.alert-item.alert-urgent:hover {
+  background: var(--red-deep);
+}
+
+.alert-item.alert-routine {
+  background: var(--orange-bg);
+  border: 1px solid var(--orange-border);
+}
+
+.alert-item.alert-routine:hover {
+  background: rgba(251, 146, 60, 0.08);
+}
+
+.alert-item-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.alert-urgent .alert-item-icon {
+  background: var(--red-deep);
+  color: var(--red-text);
+}
+
+.alert-routine .alert-item-icon {
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+.alert-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.alert-item-patient {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-item-type {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.alert-type-mental_health_crisis {
+  background: var(--red-deep);
+  color: var(--red-text);
+}
+
+.alert-type-disengagement {
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+.alert-item-context {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-item-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.alert-item-time {
+  font-size: 9px;
+  color: var(--text-ghost);
+}
+
+.btn-acknowledge-sm {
+  padding: 2px 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.btn-acknowledge-sm:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Alert Badge (Sidebar Patient Row) ──────────────────── */
+
+.alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.alert-badge-urgent {
+  background: var(--red-deep);
+  color: var(--red-text);
+}
+
+.alert-badge-routine {
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+/* ─── Alert Banner (Chat Window) ─────────────────────────── */
+
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.alert-banner-urgent {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+}
+
+.alert-banner-routine {
+  background: var(--orange-bg);
+  border: 1px solid var(--orange-border);
+}
+
+.alert-banner-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.alert-banner-icon-urgent {
+  background: var(--red-deep);
+  color: var(--red-text);
+}
+
+.alert-banner-icon-routine {
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+.alert-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-banner-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.alert-banner-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.alert-banner-time {
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.alert-banner-context {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.btn-acknowledge {
+  padding: 6px 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.btn-acknowledge:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Light theme alert overrides ────────────────────────── */
+
+[data-theme="light"] .alerts-panel-count {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+[data-theme="light"] .alert-urgent .alert-item-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+[data-theme="light"] .alert-routine .alert-item-icon {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+[data-theme="light"] .alert-type-mental_health_crisis {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+[data-theme="light"] .alert-type-disengagement {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+[data-theme="light"] .alert-badge-urgent {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+[data-theme="light"] .alert-badge-routine {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+/* ─── Clinician Layout ────────────────────────────────────── */
+
+.app-clinician {
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.clinician-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.clinician-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.clinician-topbar-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.btn-back {
+  padding: 5px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.btn-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.clinician-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.clinician-topbar-email {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─── Dashboard ──────────────────────────────────────────── */
+
+.dashboard {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.dashboard-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.dashboard-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-btn-create {
+  padding: 8px 16px;
+  font-size: 12px;
+}
+
+/* ─── Dashboard Create Form ──────────────────────────────── */
+
+.dash-create-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 20px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  align-items: flex-end;
+}
+
+.dash-create-form input[type="text"],
+.dash-create-form input[type="email"],
+.dash-create-form input[type="number"],
+.dash-create-form input:not([type]) {
+  padding: 8px 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.dash-create-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dash-create-form input::placeholder {
+  color: var(--text-ghost);
+}
+
+.dash-exercises-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.dash-exercises-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.dash-create-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.dash-create-footer .btn-primary {
+  margin-left: auto;
+}
+
+/* ─── Table Delete Button ────────────────────────────────── */
+
+.btn-delete-row {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 15px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.dash-row:hover .btn-delete-row {
+  opacity: 1;
+}
+
+.btn-delete-row:hover {
+  background: var(--red-bg);
+  color: var(--red-text);
+}
+
+/* ─── Summary Cards ──────────────────────────────────────── */
+
+.dashboard-cards {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.dash-card {
+  flex: 1;
+  padding: 18px 20px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.dash-card:hover {
+  border-color: var(--text-ghost);
+}
+
+.dash-card-active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.dash-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.dash-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.dash-card-green .dash-card-value { color: var(--green-text); }
+.dash-card-orange .dash-card-value { color: var(--orange-text); }
+.dash-card-red .dash-card-value { color: var(--red-text); }
+
+[data-theme="light"] .dash-card-green .dash-card-value { color: #16a34a; }
+[data-theme="light"] .dash-card-orange .dash-card-value { color: #ea580c; }
+[data-theme="light"] .dash-card-red .dash-card-value { color: #dc2626; }
+
+/* ─── Dashboard Filters ──────────────────────────────────── */
+
+.dashboard-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.dash-filter {
+  padding: 6px 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.dash-filter:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.dash-filter-active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.dash-filter-active:hover {
+  background: var(--accent-hover);
+  color: white;
+}
+
+.dash-filter-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-ghost);
+  font-weight: 500;
+}
+
+/* ─── Dashboard Table ────────────────────────────────────── */
+
+.dashboard-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dashboard-table thead {
+  background: var(--bg-sidebar);
+}
+
+.dashboard-table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.dashboard-table th:hover {
+  color: var(--text-secondary);
+}
+
+.dashboard-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.dashboard-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.dash-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.dash-row:hover {
+  background: var(--bg-hover);
+}
+
+/* Phase-colored left border */
+.dash-row-active { border-left: 3px solid #22c55e; }
+.dash-row-onboarding { border-left: 3px solid #3b82f6; }
+.dash-row-re_engaging { border-left: 3px solid #f59e0b; }
+.dash-row-dormant { border-left: 3px solid #ef4444; }
+.dash-row-pending { border-left: 3px solid #9ca3af; }
+
+/* ─── Dashboard Table Cells ──────────────────────────────── */
+
+.dash-cell-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dash-patient-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dash-patient-id {
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.dash-cell-goal {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.dash-adherence {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.dash-adherence.good { color: var(--green-text); }
+.dash-adherence.mid { color: var(--orange-text); }
+.dash-adherence.low { color: var(--red-text); }
+
+[data-theme="light"] .dash-adherence.good { color: #16a34a; }
+[data-theme="light"] .dash-adherence.mid { color: #ea580c; }
+[data-theme="light"] .dash-adherence.low { color: #dc2626; }
+
+.dash-cell-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dash-cell-na,
+.dash-cell-zero {
+  color: var(--text-ghost);
+}
+
+.dash-unanswered {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+[data-theme="light"] .dash-unanswered {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+.dash-cell-alerts {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dash-alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.dash-alert-chip:hover {
+  filter: brightness(1.2);
+}
+
+.dash-alert-urgent {
+  background: var(--red-deep);
+  color: var(--red-text);
+}
+
+.dash-alert-routine {
+  background: var(--orange-border);
+  color: var(--orange-text);
+}
+
+[data-theme="light"] .dash-alert-urgent {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+[data-theme="light"] .dash-alert-routine {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+.dash-alert-x {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-left: 1px;
+}
+
+.dash-empty {
+  text-align: center;
+  color: var(--text-ghost);
+  padding: 32px 16px;
+  font-size: 13px;
+}

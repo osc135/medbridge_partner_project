@@ -133,9 +133,28 @@ def alert_clinician(
     alert_type: 'disengagement' | 'mental_health_crisis'
     urgency: 'routine' | 'urgent'
     """
+    from ai_health_coach.core.persistence import load_state, save_state
+    from ai_health_coach.core.simulation import get_current_date
+
+    alert_id = f"alert_{patient_id}_{alert_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+    alert = {
+        "id": alert_id,
+        "alert_type": alert_type,
+        "urgency": urgency,
+        "context": context,
+        "timestamp": get_current_date(),
+        "acknowledged": False,
+    }
+
+    state = load_state(patient_id)
+    if state is not None:
+        state = {**state, "alerts": state.get("alerts", []) + [alert]}
+        save_state(state)
+
     return {
         "success": True,
-        "alert_id": f"alert_{patient_id}_{alert_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        "alert_id": alert_id,
     }
 
 

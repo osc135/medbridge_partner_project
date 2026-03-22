@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AlertsPanel from "./AlertsPanel";
 
 const PHASE_COLORS = {
   PENDING: "#9ca3af",
@@ -18,6 +19,8 @@ export default function Sidebar({
   onDelete,
   onLogout,
   userEmail,
+  alerts,
+  onAcknowledgeAlert,
 }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -78,6 +81,12 @@ export default function Sidebar({
           {showForm ? "×" : "+"}
         </button>
       </div>
+
+      <AlertsPanel
+        alerts={alerts}
+        onSelectPatient={onSelect}
+        onAcknowledge={onAcknowledgeAlert}
+      />
 
       {showForm && (
         <form className="new-patient-form" onSubmit={handleSubmit}>
@@ -163,14 +172,28 @@ export default function Sidebar({
       )}
 
       <div className="patient-list">
-        {patients.map((p) => (
+        {patients.map((p) => {
+          const alertCount = (alerts || []).filter(
+            (a) => a.patient_id === p.patient_id
+          ).length;
+          const hasUrgent = (alerts || []).some(
+            (a) => a.patient_id === p.patient_id && a.urgency === "urgent"
+          );
+          return (
           <div
             key={p.patient_id}
             className={`patient-item ${selectedId === p.patient_id ? "selected" : ""}`}
             onClick={() => onSelect(p.patient_id)}
           >
             <div className="patient-info">
-              <span className="patient-name">{p.patient_name}</span>
+              <span className="patient-name">
+                {p.patient_name}
+                {alertCount > 0 && (
+                  <span className={`alert-badge ${hasUrgent ? "alert-badge-urgent" : "alert-badge-routine"}`}>
+                    {alertCount}
+                  </span>
+                )}
+              </span>
               <span
                 className="phase-badge"
                 style={{ backgroundColor: PHASE_COLORS[p.phase] || "#6b7280" }}
@@ -189,7 +212,8 @@ export default function Sidebar({
               ×
             </button>
           </div>
-        ))}
+          );
+        })}
         {patients.length === 0 && (
           <p className="empty-state">No patients yet. Click + to create one.</p>
         )}
