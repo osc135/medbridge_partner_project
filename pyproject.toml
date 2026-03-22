@@ -23,5 +23,11 @@ health-coach = "ai_health_coach.cli.main:main"
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+markers = [
+    "eval: LLM evals that hit the real API (run with: pytest -m eval)",
+]
+addopts = "-m 'not eval'"
+
 [tool.setuptools.packages.find]
 include = ["ai_health_coach*"]
