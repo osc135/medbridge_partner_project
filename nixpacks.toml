@@ -5,11 +5,12 @@ nixPkgs = ["python311", "nodejs_20"]
 cmds = [
     "python -m venv /opt/venv",
     "/opt/venv/bin/pip install -e .",
-    "cd frontend && npm install",
 ]
 
 [phases.build]
-cmds = ["cd frontend && npm run build"]
+cmds = [
+    "cd frontend && npm install && npm run build",
+]
 
 [start]
 cmd = "/opt/venv/bin/uvicorn ai_health_coach.api.routes:app --host 0.0.0.0 --port ${PORT:-8000}"
