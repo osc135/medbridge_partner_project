@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -10,6 +12,8 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ai_health_coach.core.graph.router import route_message
@@ -27,11 +31,19 @@ app = FastAPI(title="AI Health Coach API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 # ─── Request/Response Models ────────────────────────────────────────
@@ -288,4 +300,19 @@ def acknowledge_alert(patient_id: str, alert_id: str):
     save_state(state)
     return {"acknowledged": True}
 
+
+# ─── Static Frontend (production) ─────────────────────────────────
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="static")
+
+    @app.get("/{path:path}")
+    def serve_frontend(path: str):
+        """Serve the React SPA — catch-all for non-API routes."""
+        file_path = FRONTEND_DIR / path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
 

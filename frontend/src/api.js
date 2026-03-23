@@ -1,4 +1,6 @@
-const BASE = "http://localhost:8000/api";
+// In production (served from FastAPI), use relative URL.
+// In dev (Vite on :5173), proxy or use localhost:8000.
+const BASE = import.meta.env.DEV ? "http://localhost:8000/api" : "/api";
 
 export async function fetchPatients() {
   const res = await fetch(`${BASE}/patients`);
