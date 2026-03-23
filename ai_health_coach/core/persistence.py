@@ -1,28 +1,26 @@
-"""Persistence layer — SQLite-backed state storage.
-
-Uses a simple JSON-serialized approach via SQLite. LangGraph's checkpointer
-can be layered on top, but this gives us direct control for the CLI.
-Swap to Postgres by changing the connection string.
-"""
+"""Persistence layer — Postgres via DATABASE_URL."""
 
 from __future__ import annotations
 
 import json
 import os
-import sqlite3
+
+import psycopg2
 
 from ai_health_coach.core.state.schemas import PatientState
 
-def _get_connection() -> sqlite3.Connection:
-    db_path = os.environ.get("HEALTH_COACH_DB", "patients.db")
-    conn = sqlite3.connect(db_path)
-    conn.execute("""
+
+def _get_connection():
+    conn = psycopg2.connect(os.environ["DATABASE_URL"])
+    conn.autocommit = False
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS patients (
             patient_id TEXT PRIMARY KEY,
             state_json TEXT NOT NULL
         )
     """)
-    conn.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS onboarding_states (
             patient_id TEXT PRIMARY KEY,
             state_json TEXT NOT NULL
@@ -33,10 +31,11 @@ def _get_connection() -> sqlite3.Connection:
 
 
 def save_state(state: PatientState) -> None:
-    """Persist patient state to SQLite."""
     conn = _get_connection()
-    conn.execute(
-        "INSERT OR REPLACE INTO patients (patient_id, state_json) VALUES (?, ?)",
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO patients (patient_id, state_json) VALUES (%s, %s) "
+        "ON CONFLICT (patient_id) DO UPDATE SET state_json = EXCLUDED.state_json",
         (state["patient_id"], json.dumps(state)),
     )
     conn.commit()
@@ -44,13 +43,10 @@ def save_state(state: PatientState) -> None:
 
 
 def load_state(patient_id: str) -> PatientState | None:
-    """Load patient state from SQLite. Returns None if not found."""
     conn = _get_connection()
-    cursor = conn.execute(
-        "SELECT state_json FROM patients WHERE patient_id = ?",
-        (patient_id,),
-    )
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT state_json FROM patients WHERE patient_id = %s", (patient_id,))
+    row = cur.fetchone()
     conn.close()
     if row is None:
         return None
@@ -58,10 +54,11 @@ def load_state(patient_id: str) -> PatientState | None:
 
 
 def save_onboarding_state(patient_id: str, onboarding_state: dict) -> None:
-    """Persist onboarding subgraph state."""
     conn = _get_connection()
-    conn.execute(
-        "INSERT OR REPLACE INTO onboarding_states (patient_id, state_json) VALUES (?, ?)",
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO onboarding_states (patient_id, state_json) VALUES (%s, %s) "
+        "ON CONFLICT (patient_id) DO UPDATE SET state_json = EXCLUDED.state_json",
         (patient_id, json.dumps(onboarding_state)),
     )
     conn.commit()
@@ -69,13 +66,10 @@ def save_onboarding_state(patient_id: str, onboarding_state: dict) -> None:
 
 
 def load_onboarding_state(patient_id: str) -> dict | None:
-    """Load onboarding subgraph state."""
     conn = _get_connection()
-    cursor = conn.execute(
-        "SELECT state_json FROM onboarding_states WHERE patient_id = ?",
-        (patient_id,),
-    )
-    row = cursor.fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT state_json FROM onboarding_states WHERE patient_id = %s", (patient_id,))
+    row = cur.fetchone()
     conn.close()
     if row is None:
         return None
@@ -83,11 +77,11 @@ def load_onboarding_state(patient_id: str) -> dict | None:
 
 
 def list_patients() -> list[dict]:
-    """List all patients with their current phase."""
     conn = _get_connection()
-    cursor = conn.execute("SELECT patient_id, state_json FROM patients")
+    cur = conn.cursor()
+    cur.execute("SELECT patient_id, state_json FROM patients")
     patients = []
-    for row in cursor:
+    for row in cur:
         state = json.loads(row[1])
         patients.append({
             "patient_id": state["patient_id"],
@@ -99,11 +93,11 @@ def list_patients() -> list[dict]:
 
 
 def delete_patient(patient_id: str) -> bool:
-    """Delete a patient's state. Returns True if found and deleted."""
     conn = _get_connection()
-    cursor = conn.execute("DELETE FROM patients WHERE patient_id = ?", (patient_id,))
-    conn.execute("DELETE FROM onboarding_states WHERE patient_id = ?", (patient_id,))
+    cur = conn.cursor()
+    cur.execute("DELETE FROM patients WHERE patient_id = %s", (patient_id,))
+    deleted = cur.rowcount > 0
+    cur.execute("DELETE FROM onboarding_states WHERE patient_id = %s", (patient_id,))
     conn.commit()
-    deleted = cursor.rowcount > 0
     conn.close()
     return deleted
